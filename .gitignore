@@ -5,3 +5,5 @@ dist/
 .env.*
 coverage/
 .skill-lint-cache/
+sprints/
+sprints/
