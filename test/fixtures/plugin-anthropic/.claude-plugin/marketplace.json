@@ -1,0 +1,7 @@
+{
+  "name": "anthropic-test",
+  "owner": { "name": "Test Author" },
+  "plugins": [
+    { "name": "anthropic-test", "source": "." }
+  ]
+}

@@ -27,8 +27,8 @@ describe('lint command — integration', () => {
   // AC-1: Discovers files in fixtures, produces expected results.
   it('discovers .md files and reports validation results', () => {
     const { stdout, exitCode } = run(`lint ${FIXTURES}`);
-    // Should report 43 files checked (.md files minus README.md ignored by default)
-    assert.ok(stdout.includes('43 files checked'), `expected "43 files checked" in: ${stdout}`);
+    // Should report 48 files checked (.md files minus README.md ignored by default)
+    assert.ok(stdout.includes('48 files checked'), `expected "48 files checked" in: ${stdout}`);
     // Should find errors (invalid-yaml.md parse error, empty-body.md, SKILL.md no frontmatter)
     assert.ok(stdout.includes('3 errors'), `expected "3 errors" in: ${stdout}`);
     assert.equal(exitCode, 1, 'should exit 1 when errors exist');
@@ -134,9 +134,9 @@ describe('lint command — integration', () => {
   // AC-10: Ignore patterns filter files before extraction.
   it('filters files matching ignore patterns', () => {
     // Default config ignores **/README.md. The fixtures dir has README.md.
-    // With 44 .md files, we expect 43 after filtering.
+    // With 49 .md files, we expect 48 after filtering.
     const { stdout } = run(`lint ${FIXTURES}`);
-    assert.ok(stdout.includes('43 files checked'), `expected 43 files (README.md ignored): ${stdout}`);
+    assert.ok(stdout.includes('48 files checked'), `expected 48 files (README.md ignored): ${stdout}`);
   });
 
   // AC-11: Empty directory -> 0 files checked, exit 0.
