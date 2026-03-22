@@ -113,8 +113,8 @@ export async function runLint(options: LintOptions): Promise<number> {
     return resolved;
   });
 
-  // (g) Call extractAll with patterns.
-  let results = await extractAll(patterns);
+  // (g) Call extractAll with patterns, passing ignore patterns to glob.
+  let results = await extractAll(patterns, config.ignore);
 
   // (f) Apply ignore patterns from config to filter files (AC-10).
   if (config.ignore.length > 0) {

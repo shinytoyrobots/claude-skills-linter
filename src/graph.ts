@@ -50,7 +50,7 @@ export async function runGraph(options: GraphOptions): Promise<number> {
   });
 
   // (c) Extract all files.
-  let results = await extractAll(patterns);
+  let results = await extractAll(patterns, config.ignore);
 
   // (d) Apply ignore patterns from config.
   if (config.ignore.length > 0) {
