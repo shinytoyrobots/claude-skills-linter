@@ -1,0 +1,40 @@
+{
+  "name": "skill-lint",
+  "version": "0.1.0",
+  "description": "A CLI tool that validates Claude Code skill files for structural correctness",
+  "type": "module",
+  "bin": {
+    "skill-lint": "bin/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "node --test"
+  },
+  "keywords": [
+    "claude",
+    "skills",
+    "linter",
+    "validation"
+  ],
+  "author": "Robin Cannon <robin@shinytoyrobots.com>",
+  "license": "MIT",
+  "dependencies": {
+    "@stoplight/spectral-core": "^1.21.0",
+    "@stoplight/spectral-functions": "^1.10.1",
+    "chalk": "^5.6.2",
+    "glob": "^13.0.6",
+    "gray-matter": "^4.0.3",
+    "minimatch": "^10.2.4",
+    "yaml": "^2.8.3",
+    "yargs": "^17.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/yargs": "^17.0.0",
+    "ajv": "^8.18.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

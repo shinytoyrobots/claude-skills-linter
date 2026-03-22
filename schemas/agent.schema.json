@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://skill-lint.dev/schemas/agent.schema.json",
+  "title": "Claude Code Agent Frontmatter",
+  "description": "JSON Schema for Claude Code agent skill file frontmatter",
+  "type": "object",
+  "required": ["name", "description"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Unique identifier for the agent"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of the agent's role and capabilities"
+    },
+    "tools": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "System execution tools available to this agent"
+    },
+    "model": {
+      "type": "string",
+      "description": "Preferred model to use when running this agent"
+    }
+  },
+  "additionalProperties": true
+}
