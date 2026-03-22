@@ -1,7 +1,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import chalk from 'chalk';
-import { reportTerminal, reportGitHub } from '../src/reporter.js';
+import { reportTerminal, reportGitHub, reportJSON } from '../src/reporter.js';
 import type { ValidationResult } from '../src/types.js';
 
 /** Strip ANSI escape codes for text-content assertions. */
@@ -430,5 +430,84 @@ describe('reportGitHub', () => {
     ];
     const output = reportGitHub(results, rootDir + '/');
     assert.ok(output.includes('file=commands/test.md'));
+  });
+});
+
+describe('story-024: progressive profiles in reporter', () => {
+  beforeEach(() => {
+    chalk.level = 1;
+  });
+
+  // AC-7: Terminal format includes effective level as [level N] in file header
+  it('AC-7: terminal format includes [level N] in file header when effectiveLevel present', () => {
+    const results: ValidationResult[] = [
+      {
+        filePath: 'commands/foo.md',
+        rule: 'model-enum',
+        severity: 'error',
+        message: 'invalid model',
+        effectiveLevel: 2,
+      },
+    ];
+    const output = strip(reportTerminal(results, 5));
+    assert.ok(output.includes('[level 2]'), `Expected [level 2] in output, got: ${output}`);
+    assert.ok(output.includes('commands/foo.md'), 'should include file path');
+  });
+
+  it('AC-7: terminal format omits level tag when effectiveLevel not present', () => {
+    const results: ValidationResult[] = [
+      {
+        filePath: 'commands/foo.md',
+        rule: 'model-enum',
+        severity: 'error',
+        message: 'invalid model',
+      },
+    ];
+    const output = strip(reportTerminal(results, 5));
+    assert.ok(!output.includes('[level'), `Should not include level tag, got: ${output}`);
+  });
+
+  it('AC-7: terminal format shows [level 0] correctly', () => {
+    const results: ValidationResult[] = [
+      {
+        filePath: 'commands/bar.md',
+        rule: 'non-empty-body',
+        severity: 'error',
+        message: 'body is empty',
+        effectiveLevel: 0,
+      },
+    ];
+    const output = strip(reportTerminal(results, 3));
+    assert.ok(output.includes('[level 0]'), `Expected [level 0] in output, got: ${output}`);
+  });
+
+  // AC-8: JSON format includes effectiveLevel in each ValidationResult
+  it('AC-8: JSON format includes effectiveLevel when present', () => {
+    const results: ValidationResult[] = [
+      {
+        filePath: 'commands/foo.md',
+        rule: 'model-enum',
+        severity: 'error',
+        message: 'invalid model',
+        effectiveLevel: 2,
+      },
+    ];
+    const json = reportJSON(results);
+    const parsed = JSON.parse(json);
+    assert.equal(parsed[0].effectiveLevel, 2);
+  });
+
+  it('AC-8: JSON format omits effectiveLevel when not present', () => {
+    const results: ValidationResult[] = [
+      {
+        filePath: 'commands/foo.md',
+        rule: 'model-enum',
+        severity: 'error',
+        message: 'invalid model',
+      },
+    ];
+    const json = reportJSON(results);
+    const parsed = JSON.parse(json);
+    assert.equal(parsed[0].effectiveLevel, undefined);
   });
 });
