@@ -294,8 +294,8 @@ describe('extractAll — plugin subdirectory discovery (story-028)', () => {
       'should discover skill-creator/agents/writer.md',
     );
     assert.ok(
-      paths.some((p) => p.includes('skill-creator/agents/reviewer.md')),
-      'should discover skill-creator/agents/reviewer.md',
+      paths.some((p) => p.includes('skill-creator/agents/skill-reviewer.md')),
+      'should discover skill-creator/agents/skill-reviewer.md',
     );
   });
 

@@ -40,6 +40,28 @@ const RELATIVE_REF_PATTERN =
   /\.\.?\/[^\s)]*\.md/g;
 
 /**
+ * Known subdirectory prefixes for bare references inside plugin skill directories.
+ * These match paths like `reference/foo.md`, `shared/bar.md` without a `./` prefix.
+ */
+const BARE_SUBDIRECTORY_PREFIXES = ['reference', 'shared', 'examples', 'templates', 'themes'];
+
+/**
+ * Regex to extract bare subdirectory references from body text.
+ *
+ * Matches patterns like:
+ *   reference/foo.md
+ *   shared/helpers.md
+ *   templates/base.md
+ *
+ * The negative lookbehind prevents matching paths that are part of a longer
+ * path (e.g., `./reference/foo.md` or `~/.claude/commands/context/foo.md`).
+ */
+const BARE_REF_PATTERN = new RegExp(
+  `(?<![.\\w\\-\\/])(?:${BARE_SUBDIRECTORY_PREFIXES.join('|')})\\/[\\w][\\w.\\-/]*\\.md`,
+  'g',
+);
+
+/**
  * Normalize a raw reference path to repo-relative form.
  *
  * - Strips the `~/.claude/commands/` prefix if present.
@@ -216,6 +238,29 @@ export function extractRelativeRefs(bodyText: string): Array<{ raw: string }> {
 }
 
 /**
+ * Extract bare subdirectory references from body text.
+ * Returns raw path strings (e.g., "reference/foo.md", "shared/helpers.md").
+ *
+ * These are paths that start with a known subdirectory prefix but have no
+ * `./` or `../` prefix and don't match the canonical REF_PATTERN (which only
+ * matches agents/, context/, commands/ prefixes).
+ */
+export function extractBareRefs(bodyText: string): Array<{ raw: string }> {
+  const refs: Array<{ raw: string }> = [];
+  const seen = new Set<string>();
+
+  for (const match of bodyText.matchAll(BARE_REF_PATTERN)) {
+    const raw = match[0];
+    if (!seen.has(raw)) {
+      seen.add(raw);
+      refs.push({ raw });
+    }
+  }
+
+  return refs;
+}
+
+/**
  * Check whether a resolved path escapes the repo root.
  */
 function escapesRepo(resolvedPath: string, rootDir: string): boolean {
@@ -292,17 +337,106 @@ function resolveAllRefs(
     }
   }
 
-  // Always extract canonical refs (legacy patterns).
-  const canonicalRefs = extractRefs(bodyText);
-  for (const ref of canonicalRefs) {
-    // AC-5: Skip if already resolved via relative path.
-    if (!seenNormalized.has(ref.normalized)) {
-      seenNormalized.add(ref.normalized);
-      resolved.push({
-        raw: ref.raw,
-        normalized: ref.normalized,
-        isRelative: false,
-      });
+  // For plugin/multi-plugin formats, resolve bare subdirectory refs.
+  if (isPluginFormat && rootDir) {
+    const bareRefs = extractBareRefs(bodyText);
+    const sourceDir = dirname(sourceFilePath);
+
+    for (const ref of bareRefs) {
+      // Skip if already seen (e.g., matched by RELATIVE_REF_PATTERN).
+      if (seenNormalized.has(ref.raw)) continue;
+
+      // Try relative resolution first.
+      const absPath = resolve(sourceDir, ref.raw);
+
+      if (!escapesRepo(absPath, rootDir) && filePathSet.has(absPath)) {
+        const targetFile = pathToFile.get(absPath);
+        const cn = targetFile
+          ? canonicalName(targetFile.filePath, targetFile.fileType)
+          : ref.raw;
+
+        resolved.push({
+          raw: ref.raw,
+          normalized: cn,
+          isRelative: true,
+          resolvedPath: absPath,
+        });
+        seenNormalized.add(cn);
+      } else {
+        // Canonical fallback: check if the raw ref matches a canonical name.
+        if (index.nameToPath.has(ref.raw)) {
+          resolved.push({
+            raw: ref.raw,
+            normalized: ref.raw,
+            isRelative: false,
+          });
+          seenNormalized.add(ref.raw);
+        } else {
+          // Neither relative nor canonical resolved — broken ref.
+          resolved.push({
+            raw: ref.raw,
+            normalized: ref.raw,
+            isRelative: true,
+          });
+          seenNormalized.add(ref.raw);
+        }
+      }
+    }
+  }
+
+  // For plugin format, try resolving REF_PATTERN matches as relative paths
+  // BEFORE canonical lookup. If relative resolution finds the file, treat as
+  // resolved. If not, fall through to canonical.
+  if (isPluginFormat && rootDir) {
+    const canonicalRefs = extractRefs(bodyText);
+    const sourceDir = dirname(sourceFilePath);
+
+    for (const ref of canonicalRefs) {
+      // Skip if already resolved via relative or bare ref.
+      if (seenNormalized.has(ref.normalized)) continue;
+
+      // Try relative resolution first.
+      const absPath = resolve(sourceDir, ref.raw.startsWith(INSTALLED_PREFIX)
+        ? ref.raw.slice(INSTALLED_PREFIX.length)
+        : ref.raw);
+
+      if (!escapesRepo(absPath, rootDir) && filePathSet.has(absPath)) {
+        const targetFile = pathToFile.get(absPath);
+        const cn = targetFile
+          ? canonicalName(targetFile.filePath, targetFile.fileType)
+          : ref.normalized;
+
+        resolved.push({
+          raw: ref.raw,
+          normalized: cn,
+          isRelative: true,
+          resolvedPath: absPath,
+        });
+        seenNormalized.add(cn);
+        // Also add the original normalized form to prevent canonical re-processing.
+        seenNormalized.add(ref.normalized);
+      } else {
+        // Fall through to canonical resolution.
+        seenNormalized.add(ref.normalized);
+        resolved.push({
+          raw: ref.raw,
+          normalized: ref.normalized,
+          isRelative: false,
+        });
+      }
+    }
+  } else {
+    // Legacy format or no rootDir: canonical resolution only.
+    const canonicalRefs = extractRefs(bodyText);
+    for (const ref of canonicalRefs) {
+      if (!seenNormalized.has(ref.normalized)) {
+        seenNormalized.add(ref.normalized);
+        resolved.push({
+          raw: ref.raw,
+          normalized: ref.normalized,
+          isRelative: false,
+        });
+      }
     }
   }
 
