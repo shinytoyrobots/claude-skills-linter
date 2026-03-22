@@ -1,0 +1,7 @@
+{
+  "name": "test-multi-plugin",
+  "owner": { "name": "Test Author" },
+  "plugins": [
+    { "name": "foo", "source": "plugins/foo" }
+  ]
+}

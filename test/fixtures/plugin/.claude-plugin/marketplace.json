@@ -1,0 +1,7 @@
+{
+  "name": "test-plugin",
+  "owner": { "name": "Test Author" },
+  "plugins": [
+    { "name": "test-plugin", "source": "." }
+  ]
+}
