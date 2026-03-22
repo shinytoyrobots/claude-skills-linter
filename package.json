@@ -8,7 +8,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "test": "node --test"
+    "test": "tsx --test test/*.test.ts"
   },
   "keywords": [
     "claude",
@@ -32,6 +32,7 @@
     "@types/node": "^20.0.0",
     "@types/yargs": "^17.0.0",
     "ajv": "^8.18.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.0.0"
   },
   "engines": {
