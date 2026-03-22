@@ -71,7 +71,7 @@ export async function runGraph(options: GraphOptions): Promise<number> {
   }
 
   // (f) Validate graph.
-  const validationResults = validateGraph(results, config);
+  const validationResults = validateGraph(results, config, rootDir);
 
   // (g) Format and print report.
   const output =
