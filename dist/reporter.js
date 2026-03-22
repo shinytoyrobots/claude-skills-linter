@@ -69,7 +69,10 @@ export function reportTerminal(results, totalFiles) {
     }
     const lines = [];
     for (const [filePath, fileResults] of grouped) {
-        lines.push(`  ${chalk.underline(filePath)}`);
+        // Show effective level in file header if available.
+        const level = fileResults[0]?.effectiveLevel;
+        const levelTag = level !== undefined ? ` ${chalk.dim(`[level ${level}]`)}` : '';
+        lines.push(`  ${chalk.underline(filePath)}${levelTag}`);
         for (const r of fileResults) {
             const severityLabel = r.severity === 'error'
                 ? chalk.red(r.severity)

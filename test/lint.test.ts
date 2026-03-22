@@ -123,11 +123,12 @@ describe('lint command — integration', () => {
     assert.ok(stderr.includes('Failed to get changed files'), `expected error in stderr: ${stderr}`);
   });
 
-  // AC-9: --ratchet prints stub message and exits 0.
-  it('prints "Not yet implemented" for --ratchet and exits 0', () => {
-    const { stderr, exitCode } = run(`lint --ratchet ${FIXTURES}`);
-    assert.ok(stderr.includes('Not yet implemented'), `expected stub message in stderr: ${stderr}`);
-    assert.equal(exitCode, 0);
+  // AC-9: --ratchet runs without crashing (ratchet is now implemented).
+  it('--ratchet runs and reports lint results', () => {
+    const { stdout, exitCode } = run(`lint --ratchet ${FIXTURES}`);
+    assert.ok(stdout.includes('files checked'), `expected file count in stdout: ${stdout}`);
+    // Exit code depends on fixture lint errors, not ratchet itself
+    assert.ok([0, 1].includes(exitCode), `expected exit 0 or 1, got ${exitCode}`);
   });
 
   // AC-10: Ignore patterns filter files before extraction.

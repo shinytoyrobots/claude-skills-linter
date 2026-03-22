@@ -17,13 +17,17 @@ export interface LevelRule {
  *
  * For each ExtractResult:
  * - If it has pre-existing errors, converts them to ValidationResults (skips Spectral).
- * - Otherwise, runs the appropriate Spectral rules based on file type and level filter.
+ * - Otherwise, resolves the effective quality level per file and runs appropriate rules.
+ *
+ * The `cliLevel` parameter sets a floor: effectiveLevel = max(resolvedLevel, cliLevel).
+ * When no files declare `quality_level` and no directory overrides exist,
+ * behavior is identical to the previous global-level approach.
  *
  * @param results - Extracted frontmatter results to validate.
- * @param level - Maximum rule level to include (0 = Level 0 only, 1 = Level 0 + Level 1).
- * @param config - Optional config for model list, tool registry, and limits.
+ * @param cliLevel - CLI --level flag value (floor for effective level).
+ * @param config - Optional config for model list, tool registry, limits, levels, and skills_root.
  */
-export declare function validateFrontmatter(results: ExtractResult[], level: number, config?: Pick<Config, 'models' | 'tools' | 'limits'>): Promise<ValidationResult[]>;
+export declare function validateFrontmatter(results: ExtractResult[], cliLevel: number, config?: Pick<Config, 'models' | 'tools' | 'limits' | 'default_level' | 'levels' | 'skills_root'>): Promise<ValidationResult[]>;
 /**
  * Get the full ruleset for inspection (e.g., testing).
  * Returns the raw rules object with extensions metadata.
