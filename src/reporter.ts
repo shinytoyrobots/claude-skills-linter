@@ -2,6 +2,54 @@ import chalk from 'chalk';
 import type { ValidationResult } from './types.js';
 
 /**
+ * Escape special characters in a message for GitHub Actions annotation format.
+ * Per GitHub docs: % → %25, \r → %0D, \n → %0A
+ */
+function escapeMessage(msg: string): string {
+  return msg.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+}
+
+/**
+ * Map severity to GitHub Actions annotation command.
+ */
+function severityToCommand(severity: 'error' | 'warning' | 'info'): string {
+  if (severity === 'info') return 'notice';
+  return severity;
+}
+
+/**
+ * Format validation results as GitHub Actions workflow annotations.
+ * Each result becomes a ::error, ::warning, or ::notice annotation
+ * that GitHub renders inline on PR diffs.
+ */
+export function reportGitHub(
+  results: ValidationResult[],
+  rootDir: string,
+): string {
+  if (results.length === 0) {
+    return '';
+  }
+
+  // Normalize rootDir to end with /
+  const prefix = rootDir.endsWith('/') ? rootDir : rootDir + '/';
+
+  const lines: string[] = [];
+
+  for (const r of results) {
+    const command = severityToCommand(r.severity);
+    // Strip rootDir prefix to produce repo-relative path
+    const relPath = r.filePath.startsWith(prefix)
+      ? r.filePath.slice(prefix.length)
+      : r.filePath;
+    const escapedMessage = escapeMessage(r.message);
+    const lineParam = r.line !== undefined ? `,line=${r.line}` : '';
+    lines.push(`::${command} file=${relPath}${lineParam}::${escapedMessage} (${r.rule})`);
+  }
+
+  return lines.join('\n');
+}
+
+/**
  * Format validation results as human-readable terminal output.
  * Groups results by file path, colorizes by severity, and includes a summary line.
  */

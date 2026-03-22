@@ -5,10 +5,11 @@
 
 import { resolve } from 'node:path';
 import { loadConfig } from './config.js';
-import { extractAll } from './extract.js';
+import { extractAll, extractFile } from './extract.js';
 import { validateFrontmatter } from './validate-frontmatter.js';
-import { reportTerminal } from './reporter.js';
+import { reportTerminal, reportGitHub } from './reporter.js';
 import { minimatch } from 'minimatch';
+import { getChangedFiles, ChangedFilesError } from './changed-files.js';
 
 /** Options passed from the CLI to the lint orchestrator. */
 export interface LintOptions {
@@ -39,9 +40,49 @@ export async function runLint(options: LintOptions): Promise<number> {
   // (a) Load config — may throw ConfigError, handled by caller.
   const config = loadConfig(rootDir);
 
-  // (b) Stub: --changed-only (AC-8)
+  // (b) --changed-only: lint only files changed since base ref.
+  //     ChangedFilesError is NOT caught here — the caller (cli.ts) handles it for exit code 2.
   if (options.changedOnly) {
-    process.stderr.write('Not yet implemented\n');
+    let changedFiles = getChangedFiles(options.base);
+
+    // Apply ignore patterns from config to the git-derived file list.
+    if (config.ignore.length > 0) {
+      changedFiles = changedFiles.filter((filePath) => {
+        for (const pattern of config.ignore) {
+          if (minimatch(filePath, pattern, { matchBase: true })) {
+            return false;
+          }
+        }
+        return true;
+      });
+    }
+
+    // Zero changed files — report and exit 0.
+    if (changedFiles.length === 0) {
+      process.stdout.write('0 files checked\n');
+      return 0;
+    }
+
+    // Extract each changed file individually.
+    let results = changedFiles.map((filePath) => extractFile(filePath));
+
+    // Validate frontmatter.
+    const validationResults = await validateFrontmatter(results, options.level, config);
+
+    // Format and print report.
+    const output = reportTerminal(validationResults, results.length);
+    process.stdout.write(output + '\n');
+
+    // --strict: warnings count as errors.
+    if (options.strict) {
+      const hasWarnings = validationResults.some((r) => r.severity === 'warning');
+      if (hasWarnings) return 1;
+    }
+
+    // Errors -> exit 1.
+    const hasErrors = validationResults.some((r) => r.severity === 'error');
+    if (hasErrors) return 1;
+
     return 0;
   }
 
@@ -51,8 +92,8 @@ export async function runLint(options: LintOptions): Promise<number> {
     return 0;
   }
 
-  // (d) Non-terminal formats are not implemented yet.
-  if (options.format !== 'terminal') {
+  // (d) Non-terminal formats: JSON is not implemented yet.
+  if (options.format === 'json') {
     process.stderr.write('Not yet implemented\n');
     // Fall through to terminal output.
   }
@@ -94,13 +135,18 @@ export async function runLint(options: LintOptions): Promise<number> {
   }
 
   // (i) Validate frontmatter.
-  const validationResults = await validateFrontmatter(results, options.level);
+  const validationResults = await validateFrontmatter(results, options.level, config);
 
   // (j) Format and print report.
-  const output = reportTerminal(validationResults, results.length);
+  const output =
+    options.format === 'github'
+      ? reportGitHub(validationResults, rootDir)
+      : reportTerminal(validationResults, results.length);
 
-  // (k) Print to stdout.
-  process.stdout.write(output + '\n');
+  // (k) Print to stdout (skip empty output for clean CI).
+  if (output.length > 0) {
+    process.stdout.write(output + '\n');
+  }
 
   // (l) --strict: warnings count as errors (AC-3).
   if (options.strict) {

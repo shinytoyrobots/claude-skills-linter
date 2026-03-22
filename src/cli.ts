@@ -1,7 +1,9 @@
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { runLint } from './lint.js';
+import { runGraph } from './graph.js';
 import { ConfigError } from './config.js';
+import { ChangedFilesError } from './changed-files.js';
 
 const cli = yargs(hideBin(process.argv))
   .scriptName('skill-lint')
@@ -30,7 +32,7 @@ const cli = yargs(hideBin(process.argv))
         .option('base', {
           describe: 'Git base ref for --changed-only',
           type: 'string',
-          default: 'main',
+          default: 'origin/main',
         })
         .option('format', {
           alias: 'f',
@@ -61,7 +63,7 @@ const cli = yargs(hideBin(process.argv))
         });
         process.exit(exitCode);
       } catch (err) {
-        if (err instanceof ConfigError) {
+        if (err instanceof ConfigError || err instanceof ChangedFilesError) {
           process.stderr.write(`${err.message}\n`);
           process.exit(2);
         }
@@ -73,14 +75,38 @@ const cli = yargs(hideBin(process.argv))
     'graph [paths..]',
     'Validate cross-file references and dependency graph',
     (yargs) =>
-      yargs.positional('paths', {
-        describe: 'File or directory paths to analyze',
-        type: 'string',
-        array: true,
-      }),
-    () => {
-      // Stub handler — exits 0
-      process.exit(0);
+      yargs
+        .positional('paths', {
+          describe: 'File or directory paths to analyze',
+          type: 'string',
+          array: true,
+        })
+        .option('format', {
+          alias: 'f',
+          describe: 'Output format',
+          choices: ['terminal', 'github'] as const,
+          default: 'terminal' as const,
+        })
+        .option('strict', {
+          describe: 'Treat warnings as errors',
+          type: 'boolean',
+          default: false,
+        }),
+    async (argv) => {
+      try {
+        const exitCode = await runGraph({
+          paths: argv.paths as string[] | undefined,
+          format: argv.format,
+          strict: argv.strict,
+        });
+        process.exit(exitCode);
+      } catch (err) {
+        if (err instanceof ConfigError) {
+          process.stderr.write(`${err.message}\n`);
+          process.exit(2);
+        }
+        throw err;
+      }
     },
   )
   .command(

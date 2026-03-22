@@ -1,7 +1,7 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import chalk from 'chalk';
-import { reportTerminal } from '../src/reporter.js';
+import { reportTerminal, reportGitHub } from '../src/reporter.js';
 import type { ValidationResult } from '../src/types.js';
 
 /** Strip ANSI escape codes for text-content assertions. */
@@ -270,5 +270,165 @@ describe('reportTerminal', () => {
       );
       assert.ok(output.includes('(3 files checked)'));
     });
+  });
+});
+
+describe('reportGitHub', () => {
+  const rootDir = '/home/runner/work/skills-repo/skills-repo';
+
+  // AC-1: error annotation format
+  it('formats errors as ::error annotations', () => {
+    const results: ValidationResult[] = [
+      {
+        filePath: `${rootDir}/commands/cpo-lno.md`,
+        rule: 'required-fields-command',
+        severity: 'error',
+        message: 'description is required',
+      },
+    ];
+    const output = reportGitHub(results, rootDir);
+    assert.equal(
+      output,
+      '::error file=commands/cpo-lno.md::description is required (required-fields-command)',
+    );
+  });
+
+  // AC-2: warning annotation format
+  it('formats warnings as ::warning annotations', () => {
+    const results: ValidationResult[] = [
+      {
+        filePath: `${rootDir}/agents/dt-backend-dev.md`,
+        rule: 'file-size-limit',
+        severity: 'warning',
+        message: 'file size exceeds 15KB limit',
+      },
+    ];
+    const output = reportGitHub(results, rootDir);
+    assert.equal(
+      output,
+      '::warning file=agents/dt-backend-dev.md::file size exceeds 15KB limit (file-size-limit)',
+    );
+  });
+
+  // AC-3: zero results → empty string
+  it('returns empty string for zero results', () => {
+    const output = reportGitHub([], rootDir);
+    assert.equal(output, '');
+  });
+
+  // AC-4: repo-relative paths (strip rootDir prefix)
+  it('strips rootDir prefix to produce repo-relative paths', () => {
+    const results: ValidationResult[] = [
+      {
+        filePath: `${rootDir}/deep/nested/file.md`,
+        rule: 'some-rule',
+        severity: 'error',
+        message: 'some issue',
+      },
+    ];
+    const output = reportGitHub(results, rootDir);
+    assert.ok(output.includes('file=deep/nested/file.md'));
+    assert.ok(!output.includes(rootDir));
+  });
+
+  // AC-6: info → ::notice format
+  it('formats info severity as ::notice annotations', () => {
+    const results: ValidationResult[] = [
+      {
+        filePath: `${rootDir}/context/overview.md`,
+        rule: 'info-rule',
+        severity: 'info',
+        message: 'informational note',
+      },
+    ];
+    const output = reportGitHub(results, rootDir);
+    assert.equal(
+      output,
+      '::notice file=context/overview.md::informational note (info-rule)',
+    );
+  });
+
+  // Line number in annotation when present
+  it('includes line number when present in result', () => {
+    const results: ValidationResult[] = [
+      {
+        filePath: `${rootDir}/commands/setup.md`,
+        rule: 'required-fields',
+        severity: 'error',
+        message: 'name is required',
+        line: 3,
+      },
+    ];
+    const output = reportGitHub(results, rootDir);
+    assert.equal(
+      output,
+      '::error file=commands/setup.md,line=3::name is required (required-fields)',
+    );
+  });
+
+  it('omits line parameter when line is not present', () => {
+    const results: ValidationResult[] = [
+      {
+        filePath: `${rootDir}/commands/setup.md`,
+        rule: 'required-fields',
+        severity: 'error',
+        message: 'name is required',
+      },
+    ];
+    const output = reportGitHub(results, rootDir);
+    assert.ok(!output.includes(',line='));
+  });
+
+  // Special character escaping
+  it('escapes special characters in messages', () => {
+    const results: ValidationResult[] = [
+      {
+        filePath: `${rootDir}/commands/test.md`,
+        rule: 'test-rule',
+        severity: 'error',
+        message: '100% complete\nline two\rcarriage',
+      },
+    ];
+    const output = reportGitHub(results, rootDir);
+    assert.ok(output.includes('100%25 complete%0Aline two%0Dcarriage'));
+    assert.ok(!output.includes('\n'));
+    assert.ok(!output.includes('\r'));
+  });
+
+  // Multiple results produce multiple lines
+  it('outputs multiple annotations separated by newlines', () => {
+    const results: ValidationResult[] = [
+      {
+        filePath: `${rootDir}/commands/a.md`,
+        rule: 'rule-a',
+        severity: 'error',
+        message: 'error a',
+      },
+      {
+        filePath: `${rootDir}/agents/b.md`,
+        rule: 'rule-b',
+        severity: 'warning',
+        message: 'warning b',
+      },
+    ];
+    const output = reportGitHub(results, rootDir);
+    const lines = output.split('\n');
+    assert.equal(lines.length, 2);
+    assert.ok(lines[0].startsWith('::error'));
+    assert.ok(lines[1].startsWith('::warning'));
+  });
+
+  // rootDir with trailing slash
+  it('handles rootDir with trailing slash', () => {
+    const results: ValidationResult[] = [
+      {
+        filePath: `${rootDir}/commands/test.md`,
+        rule: 'r',
+        severity: 'error',
+        message: 'm',
+      },
+    ];
+    const output = reportGitHub(results, rootDir + '/');
+    assert.ok(output.includes('file=commands/test.md'));
   });
 });
