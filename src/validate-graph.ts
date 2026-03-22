@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import type { ExtractResult, Config, ValidationResult } from './types.js';
+import { dirname, resolve, relative } from 'node:path';
+import type { ExtractResult, Config, RepoFormat, ValidationResult } from './types.js';
 
 /**
  * Installed-path prefix used by Claude Code for skill files.
@@ -22,7 +23,21 @@ const INSTALLED_PREFIX = '~/.claude/commands/';
  * or standalone. The filename portion allows word chars, hyphens, and dots.
  */
 const REF_PATTERN =
-  /(?:~\/\.claude\/commands\/)?(?:(?:agents|context|commands)\/)+[\w][\w.\-]*\.md/g;
+  /(?<![\w.\-\/])(?:~\/\.claude\/commands\/)?(?:(?:agents|context|commands)\/)+[\w][\w.\-]*\.md/g;
+
+/**
+ * Regex to extract relative path references from body text.
+ *
+ * Matches patterns like:
+ *   ../../context/foo.md
+ *   ../agents/scanner.md
+ *   ./helpers.md
+ *
+ * Handles both bare text and markdown link syntax [text](path).
+ * The path must start with ./ or ../ and end with .md.
+ */
+const RELATIVE_REF_PATTERN =
+  /\.\.?\/[^\s)]*\.md/g;
 
 /**
  * Normalize a raw reference path to repo-relative form.
@@ -118,10 +133,49 @@ function buildCanonicalIndex(files: ExtractResult[]): CanonicalIndex {
 }
 
 /**
- * Extract references from a single file's body text.
- * Returns an array of { raw, normalized } reference objects.
+ * Build a set of absolute file paths from the extracted file set.
+ * Used for relative path resolution in plugin format repos.
  */
-function extractRefs(bodyText: string): Array<{ raw: string; normalized: string }> {
+function buildFilePathSet(files: ExtractResult[]): Set<string> {
+  const pathSet = new Set<string>();
+  for (const file of files) {
+    if (file.errors.length > 0) continue;
+    pathSet.add(file.filePath);
+  }
+  return pathSet;
+}
+
+/**
+ * Build a reverse index from absolute file path to its ExtractResult.
+ * Used for looking up fileType after resolving a relative path.
+ */
+function buildPathToFile(files: ExtractResult[]): Map<string, ExtractResult> {
+  const map = new Map<string, ExtractResult>();
+  for (const file of files) {
+    if (file.errors.length > 0) continue;
+    map.set(file.filePath, file);
+  }
+  return map;
+}
+
+/** Reference extracted from body text, with resolution metadata. */
+interface ResolvedRef {
+  raw: string;
+  normalized: string;
+  /** Whether this ref was resolved via relative path (vs canonical). */
+  isRelative: boolean;
+  /** Absolute file path this ref resolves to (only set for relative refs that resolved). */
+  resolvedPath?: string;
+}
+
+/**
+ * Extract canonical (non-relative) references from a single file's body text.
+ * Returns an array of { raw, normalized } reference objects.
+ *
+ * This function extracts ONLY the legacy installed-path and type/filename patterns.
+ * Relative path extraction is handled separately.
+ */
+export function extractRefs(bodyText: string): Array<{ raw: string; normalized: string }> {
   const refs: Array<{ raw: string; normalized: string }> = [];
   const seen = new Set<string>();
 
@@ -138,12 +192,129 @@ function extractRefs(bodyText: string): Array<{ raw: string; normalized: string 
 }
 
 /**
+ * Extract relative path references from body text.
+ * Returns raw relative path strings (e.g., "../../context/foo.md", "./helpers.md").
+ */
+export function extractRelativeRefs(bodyText: string): Array<{ raw: string }> {
+  const refs: Array<{ raw: string }> = [];
+  const seen = new Set<string>();
+
+  for (const match of bodyText.matchAll(RELATIVE_REF_PATTERN)) {
+    const raw = match[0];
+    if (!seen.has(raw)) {
+      seen.add(raw);
+      refs.push({ raw });
+    }
+  }
+
+  return refs;
+}
+
+/**
+ * Check whether a resolved path escapes the repo root.
+ */
+function escapesRepo(resolvedPath: string, rootDir: string): boolean {
+  const rel = relative(rootDir, resolvedPath);
+  // If relative path starts with "..", it's outside the root.
+  return rel.startsWith('..');
+}
+
+/**
+ * Resolve all references from a file's body text, using the appropriate
+ * strategy based on repo format.
+ *
+ * For legacy-commands: canonical name resolution only.
+ * For plugin/multi-plugin: relative path resolution first, then canonical fallback.
+ */
+function resolveAllRefs(
+  bodyText: string,
+  sourceFilePath: string,
+  format: RepoFormat | undefined,
+  rootDir: string | undefined,
+  filePathSet: Set<string>,
+  pathToFile: Map<string, ExtractResult>,
+  index: CanonicalIndex,
+): ResolvedRef[] {
+  const resolved: ResolvedRef[] = [];
+  const seenNormalized = new Set<string>();
+
+  const isPluginFormat = format === 'plugin' || format === 'multi-plugin';
+
+  // For plugin/multi-plugin formats, try relative paths first.
+  if (isPluginFormat && rootDir) {
+    const relRefs = extractRelativeRefs(bodyText);
+    const sourceDir = dirname(sourceFilePath);
+
+    for (const ref of relRefs) {
+      const absPath = resolve(sourceDir, ref.raw);
+
+      // AC-7: Check for path escape.
+      if (escapesRepo(absPath, rootDir)) {
+        resolved.push({
+          raw: ref.raw,
+          normalized: ref.raw,
+          isRelative: true,
+          // No resolvedPath — will be treated as broken with escape message.
+        });
+        seenNormalized.add(ref.raw);
+        continue;
+      }
+
+      // Check if the resolved path exists in the file set.
+      if (filePathSet.has(absPath)) {
+        // Resolve to canonical name for the target file.
+        const targetFile = pathToFile.get(absPath);
+        const cn = targetFile
+          ? canonicalName(targetFile.filePath, targetFile.fileType)
+          : ref.raw;
+
+        resolved.push({
+          raw: ref.raw,
+          normalized: cn,
+          isRelative: true,
+          resolvedPath: absPath,
+        });
+        seenNormalized.add(cn);
+      } else {
+        // Relative path didn't resolve — mark for broken-reference.
+        resolved.push({
+          raw: ref.raw,
+          normalized: ref.raw,
+          isRelative: true,
+        });
+        seenNormalized.add(ref.raw);
+      }
+    }
+  }
+
+  // Always extract canonical refs (legacy patterns).
+  const canonicalRefs = extractRefs(bodyText);
+  for (const ref of canonicalRefs) {
+    // AC-5: Skip if already resolved via relative path.
+    if (!seenNormalized.has(ref.normalized)) {
+      seenNormalized.add(ref.normalized);
+      resolved.push({
+        raw: ref.raw,
+        normalized: ref.normalized,
+        isRelative: false,
+      });
+    }
+  }
+
+  return resolved;
+}
+
+/**
  * Detect broken references: references that don't resolve to any file
- * via canonical name lookup.
+ * via canonical name lookup or relative path resolution.
  */
 function detectBrokenRefs(
   files: ExtractResult[],
   index: CanonicalIndex,
+  format: RepoFormat | undefined,
+  rootDir: string | undefined,
+  filePathSet: Set<string>,
+  pathToFile: Map<string, ExtractResult>,
 ): ValidationResult[] {
   const results: ValidationResult[] = [];
 
@@ -151,19 +322,42 @@ function detectBrokenRefs(
     if (file.errors.length > 0) continue;
 
     const bodyText = (file.data['___body_text'] as string) ?? '';
-    const refs = extractRefs(bodyText);
+    const refs = resolveAllRefs(
+      bodyText, file.filePath, format, rootDir, filePathSet, pathToFile, index,
+    );
 
     for (const ref of refs) {
-      // The normalized ref is already in canonical form (e.g., "context/foo.md").
-      if (!index.nameToPath.has(ref.normalized)) {
+      if (ref.resolvedPath) continue; // Successfully resolved via relative path.
+
+      if (ref.isRelative) {
+        // Relative ref that didn't resolve.
         const line = findLine(bodyText, ref.raw);
+        const absPath = rootDir
+          ? resolve(dirname(file.filePath), ref.raw)
+          : ref.raw;
+        const isEscape = rootDir ? escapesRepo(absPath, rootDir) : false;
+        const message = isEscape
+          ? `Broken reference to "${ref.raw}" — path escapes the repository root`
+          : `Broken reference to "${ref.raw}"`;
         results.push({
           filePath: file.filePath,
           rule: 'broken-reference',
           severity: 'error',
-          message: `Broken reference to "${ref.normalized}"`,
+          message,
           ...(line !== undefined ? { line } : {}),
         });
+      } else {
+        // Canonical ref — check against index.
+        if (!index.nameToPath.has(ref.normalized)) {
+          const line = findLine(bodyText, ref.raw);
+          results.push({
+            filePath: file.filePath,
+            rule: 'broken-reference',
+            severity: 'error',
+            message: `Broken reference to "${ref.normalized}"`,
+            ...(line !== undefined ? { line } : {}),
+          });
+        }
       }
     }
   }
@@ -172,25 +366,50 @@ function detectBrokenRefs(
 }
 
 /**
- * Detect orphaned files: context or agent files that no command references.
+ * Detect orphaned files: context or agent files that no command/skill references.
  * Uses canonical names so that references resolve regardless of repo structure.
+ *
+ * For legacy-commands: only command files are referencing entities.
+ * For plugin/multi-plugin: both command and skill files are referencing entities.
  */
 function detectOrphans(
   files: ExtractResult[],
+  format: RepoFormat | undefined,
+  rootDir: string | undefined,
+  filePathSet: Set<string>,
+  pathToFile: Map<string, ExtractResult>,
+  index: CanonicalIndex,
 ): ValidationResult[] {
   const results: ValidationResult[] = [];
 
-  // Collect all canonical names referenced from command files.
+  const isPluginFormat = format === 'plugin' || format === 'multi-plugin';
+
+  // Collect all canonical names referenced from command (and skill) files.
   const referencedCanonical = new Set<string>();
+
+  // Referencing file types: command always, skill for plugin formats.
+  const referencingTypes = new Set<string>(['command']);
+  if (isPluginFormat) {
+    referencingTypes.add('skill');
+  }
 
   for (const file of files) {
     if (file.errors.length > 0) continue;
-    if (file.fileType !== 'command') continue;
+    if (!referencingTypes.has(file.fileType)) continue;
 
     const bodyText = (file.data['___body_text'] as string) ?? '';
-    const refs = extractRefs(bodyText);
+    const refs = resolveAllRefs(
+      bodyText, file.filePath, format, rootDir, filePathSet, pathToFile, index,
+    );
     for (const ref of refs) {
       referencedCanonical.add(ref.normalized);
+      // AC-6: If resolved via relative path, also add the canonical name of the target.
+      if (ref.resolvedPath) {
+        const targetFile = pathToFile.get(ref.resolvedPath);
+        if (targetFile) {
+          referencedCanonical.add(canonicalName(targetFile.filePath, targetFile.fileType));
+        }
+      }
     }
   }
 
@@ -201,11 +420,12 @@ function detectOrphans(
 
     const cn = canonicalName(file.filePath, file.fileType);
     if (!referencedCanonical.has(cn)) {
+      const entityLabel = isPluginFormat ? 'command or skill' : 'command';
       results.push({
         filePath: file.filePath,
         rule: 'orphaned-file',
         severity: 'warning',
-        message: `File is not referenced by any command`,
+        message: `File is not referenced by any ${entityLabel}`,
       });
     }
   }
@@ -263,10 +483,17 @@ const enum Color {
 /**
  * Detect cycles in the reference graph using DFS with WHITE/GRAY/BLACK coloring.
  * Uses canonical names for adjacency so references resolve across any repo structure.
+ *
+ * AC-9: For plugin format, adjacency uses canonical names derived from resolved
+ * relative paths.
  */
 function detectCycles(
   files: ExtractResult[],
   index: CanonicalIndex,
+  format: RepoFormat | undefined,
+  rootDir: string | undefined,
+  filePathSet: Set<string>,
+  pathToFile: Map<string, ExtractResult>,
 ): ValidationResult[] {
   const results: ValidationResult[] = [];
 
@@ -281,7 +508,9 @@ function detectCycles(
     keyToFilePath.set(key, file.filePath);
 
     const bodyText = (file.data['___body_text'] as string) ?? '';
-    const refs = extractRefs(bodyText);
+    const refs = resolveAllRefs(
+      bodyText, file.filePath, format, rootDir, filePathSet, pathToFile, index,
+    );
     const targets = refs
       .map((r) => r.normalized)
       .filter((t) => index.nameToPath.has(t));
@@ -388,35 +617,45 @@ function detectNameCollisions(index: CanonicalIndex): ValidationResult[] {
  * Reference resolution uses canonical names ({type}/{basename}) so that
  * references resolve regardless of repo directory structure — flat, suite-based,
  * plugin-based, or deeply nested.
+ *
+ * For plugin/multi-plugin formats, relative path references are also supported.
+ * Relative paths are resolved against the referencing file's directory and checked
+ * against the extracted file set.
  */
 export function validateGraph(
   files: ExtractResult[],
   config: Config,
+  rootDir?: string,
 ): ValidationResult[] {
   const results: ValidationResult[] = [];
+  const format = config.format;
 
   // Build canonical name index for reference resolution.
   const index = buildCanonicalIndex(files);
 
+  // Build file path set and reverse index for relative path resolution.
+  const filePathSet = buildFilePathSet(files);
+  const pathToFile = buildPathToFile(files);
+
   // Name collisions (always checked — these are install-time bugs).
   results.push(...detectNameCollisions(index));
 
-  // AC-1, AC-2: Broken references.
-  results.push(...detectBrokenRefs(files, index));
+  // Broken references.
+  results.push(...detectBrokenRefs(files, index, format, rootDir, filePathSet, pathToFile));
 
-  // AC-3: Orphaned files (only if enabled).
+  // Orphaned files (only if enabled).
   if (config.graph.warn_orphans) {
-    results.push(...detectOrphans(files));
+    results.push(...detectOrphans(files, format, rootDir, filePathSet, pathToFile, index));
   }
 
-  // AC-4: Duplicate content (only if enabled).
+  // Duplicate content (only if enabled).
   if (config.graph.detect_duplicates) {
     results.push(...detectDuplicates(files));
   }
 
-  // AC-5: Cycle detection (only if enabled).
+  // Cycle detection (only if enabled).
   if (config.graph.detect_cycles) {
-    results.push(...detectCycles(files, index));
+    results.push(...detectCycles(files, index, format, rootDir, filePathSet, pathToFile));
   }
 
   return results;
