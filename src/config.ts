@@ -120,5 +120,6 @@ export function loadConfig(rootDir: string): Config {
     ignore: merged.ignore as Config['ignore'],
     prefixes: merged.prefixes as Config['prefixes'],
     graph: merged.graph as Config['graph'],
+    ...(merged.format !== undefined ? { format: merged.format as Config['format'] } : {}),
   };
 }
