@@ -5,7 +5,7 @@
 /** Detected repository format for skill file organization. */
 export type RepoFormat = 'legacy-commands' | 'plugin' | 'multi-plugin';
 /** Classification of a skill file based on its path. */
-export type FileType = 'command' | 'agent' | 'legacy-agent' | 'context' | 'readme' | 'unknown';
+export type FileType = 'command' | 'agent' | 'legacy-agent' | 'context' | 'skill' | 'readme' | 'unknown';
 /** An error encountered during frontmatter parsing. */
 export type ParseError = {
     message: string;

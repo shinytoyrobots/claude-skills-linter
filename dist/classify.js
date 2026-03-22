@@ -3,19 +3,29 @@ const SEGMENT_TYPE_MAP = new Map([
     ['commands', 'command'],
     ['agents', 'agent'],
     ['context', 'context'],
+    ['skills', 'skill'],
 ]);
 /**
  * Classify a skill file by its path and frontmatter presence.
  *
  * Classification rules (in priority order):
- * 1. Basename `README.md` (case-insensitive) → readme
- * 2. Rightmost known directory segment → command | agent | context
- * 3. Agent path + hasFrontmatter false → legacy-agent
- * 4. No match → unknown
+ * 1. Basename `SKILL.md` (case-sensitive) → skill
+ * 2. Basename `README.md` or `CLAUDE.md` (case-insensitive) → readme
+ * 3. Rightmost known directory segment → command | agent | context | skill
+ * 4. Agent path + hasFrontmatter false → legacy-agent
+ * 5. No match → unknown
  */
 export function classifyFile(filePath, hasFrontmatter) {
-    // AC-4: README.md basename check (case-insensitive)
     const basename = filePath.split('/').pop() ?? '';
+    // AC-3 (story-016): SKILL.md basename (case-sensitive) → skill
+    if (basename === 'SKILL.md') {
+        return 'skill';
+    }
+    // AC-9 (story-016): CLAUDE.md (case-insensitive) → readme
+    if (basename.toLowerCase() === 'claude.md') {
+        return 'readme';
+    }
+    // AC-4: README.md basename check (case-insensitive)
     if (basename.toLowerCase() === 'readme.md') {
         return 'readme';
     }
@@ -35,6 +45,10 @@ export function classifyFile(filePath, hasFrontmatter) {
     // AC-5 / AC-6: legacy-agent reclassification
     if (matchedType === 'agent') {
         return hasFrontmatter ? 'agent' : 'legacy-agent';
+    }
+    // Non-SKILL.md markdown in skills/ dirs → readme
+    if (matchedType === 'skill') {
+        return 'readme';
     }
     return matchedType;
 }
