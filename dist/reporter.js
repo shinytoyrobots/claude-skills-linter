@@ -1,5 +1,15 @@
 import chalk from 'chalk';
 /**
+ * Format validation results as a JSON array.
+ * Outputs ONLY valid JSON — no summary lines, no other text.
+ * The result is parseable by JSON.parse().
+ *
+ * When there are zero results, outputs an empty array `[]`.
+ */
+export function reportJSON(results) {
+    return JSON.stringify(results);
+}
+/**
  * Escape special characters in a message for GitHub Actions annotation format.
  * Per GitHub docs: % → %25, \r → %0D, \n → %0A
  */

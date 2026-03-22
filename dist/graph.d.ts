@@ -1,11 +1,11 @@
 /**
  * Orchestrator — wires the full graph validation pipeline end-to-end.
- * CLI args → loadConfig → extractAll → validateGraph → report → exit code
+ * CLI args → loadConfig → detectFormat → extractAll → validateGraph → report → exit code
  */
 /** Options passed from the CLI to the graph orchestrator. */
 export interface GraphOptions {
     paths?: string[];
-    format: 'terminal' | 'github';
+    format: 'terminal' | 'json' | 'github';
     strict: boolean;
 }
 /**

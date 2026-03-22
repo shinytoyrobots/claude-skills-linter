@@ -20,6 +20,7 @@ function loadSchema(filename) {
 }
 const commandSchema = loadSchema('command.schema.json');
 const agentSchema = loadSchema('agent.schema.json');
+const skillSchema = loadSchema('skill.schema.json');
 /** Known built-in Claude Code tools (PascalCase, case-sensitive). */
 const BUILTIN_TOOLS = new Set([
     'Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'Agent',
@@ -37,6 +38,7 @@ const DEFAULT_CONFIG = {
  * Level 0 rules:
  * - required-fields-command: JSON Schema validation for command frontmatter
  * - required-fields-agent: JSON Schema validation for agent frontmatter
+ * - required-fields-skill: JSON Schema validation for skill (SKILL.md) frontmatter
  * - non-empty-body: Checks ___body_length > 0
  *
  * Level 1 rules:
@@ -44,6 +46,7 @@ const DEFAULT_CONFIG = {
  * - unknown-tool: Checks allowed-tools entries are known
  * - tools-not-in-body: Checks at least one allowed tool appears in body
  * - file-size-limit: Checks ___file_size <= config.limits.max_file_size
+ * - skill-name-format: Checks skill name matches kebab-case pattern
  */
 function buildRules(config) {
     const cfg = config ?? DEFAULT_CONFIG;
@@ -113,6 +116,17 @@ function buildRules(config) {
         }
         return [];
     };
+    /** Custom inline function: checks skill name matches kebab-case pattern. */
+    const skillNameFormatFn = (targetVal) => {
+        if (targetVal === undefined || targetVal === null || typeof targetVal !== 'string') {
+            return [];
+        }
+        const pattern = /^[a-z][a-z0-9-]*$/;
+        if (!pattern.test(targetVal)) {
+            return [{ message: `skill name "${targetVal}" does not match kebab-case pattern ^[a-z][a-z0-9-]*$` }];
+        }
+        return [];
+    };
     return {
         // Level 0 rules
         'required-fields-command': {
@@ -141,6 +155,19 @@ function buildRules(config) {
             },
             extensions: level0Extensions,
         },
+        'required-fields-skill': {
+            given: '$',
+            severity: 0,
+            message: '{{error}}',
+            then: {
+                function: schema,
+                functionOptions: {
+                    schema: skillSchema,
+                    allErrors: true,
+                },
+            },
+            extensions: level0Extensions,
+        },
         'non-empty-body': {
             given: '$',
             severity: 0,
@@ -151,6 +178,15 @@ function buildRules(config) {
             extensions: level0Extensions,
         },
         // Level 1 rules
+        'skill-name-format': {
+            given: '$.name',
+            severity: 1,
+            message: '{{error}}',
+            then: {
+                function: skillNameFormatFn,
+            },
+            extensions: level1Extensions,
+        },
         'model-enum': {
             given: '$.model',
             severity: 0,
@@ -193,6 +229,7 @@ function buildRules(config) {
  * Determine which rules to enable for a given file type.
  * - command: Level 0 schema + body + all Level 1 rules
  * - agent: Level 0 schema + body + model-enum + file-size-limit (not tool rules)
+ * - skill: Level 0 schema + body + skill-name-format + file-size-limit
  * - legacy-agent, context, readme, unknown: Level 0 body only
  */
 function getRulesForFileType(fileType) {
@@ -206,6 +243,11 @@ function getRulesForFileType(fileType) {
             return new Set([
                 'required-fields-agent', 'non-empty-body',
                 'model-enum', 'file-size-limit',
+            ]);
+        case 'skill':
+            return new Set([
+                'required-fields-skill', 'non-empty-body',
+                'skill-name-format', 'file-size-limit',
             ]);
         default:
             return new Set(['non-empty-body']);

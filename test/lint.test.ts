@@ -157,16 +157,17 @@ describe('lint command — integration', () => {
     assert.ok(stderr.includes('Invalid YAML'), `expected config error message in stderr: ${stderr}`);
   });
 
-  // Additional: --format json prints stub message but still produces terminal output.
-  it('prints stub message for --format json and falls through to terminal', () => {
+  // --format json outputs valid JSON array.
+  it('outputs valid JSON array with --format json', () => {
     const tmp = mkdtempSync(resolve(tmpdir(), 'lint-format-'));
     writeFileSync(
       resolve(tmp, 'ok.md'),
       '---\nname: ok\ndescription: Fine\nmodel: sonnet\n---\n\nBody.\n',
     );
-    const { stderr, stdout, exitCode } = run(`lint --format json ${tmp}`);
-    assert.ok(stderr.includes('Not yet implemented'), `expected stub in stderr: ${stderr}`);
-    assert.ok(stdout.includes('files checked'), `expected terminal output in stdout: ${stdout}`);
+    const { stdout, exitCode } = run(`lint --format json ${tmp}`);
+    const parsed = JSON.parse(stdout.trim());
+    assert.ok(Array.isArray(parsed), 'should output a JSON array');
+    assert.equal(parsed.length, 0, 'should have zero results for valid file');
     assert.equal(exitCode, 0);
   });
 });

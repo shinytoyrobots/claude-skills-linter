@@ -1,12 +1,13 @@
 /**
  * Orchestrator — wires the full graph validation pipeline end-to-end.
- * CLI args → loadConfig → extractAll → validateGraph → report → exit code
+ * CLI args → loadConfig → detectFormat → extractAll → validateGraph → report → exit code
  */
 import { resolve } from 'node:path';
 import { loadConfig } from './config.js';
+import { detectFormat } from './detect-format.js';
 import { extractAll } from './extract.js';
 import { validateGraph } from './validate-graph.js';
-import { reportTerminal, reportGitHub } from './reporter.js';
+import { reportTerminal, reportGitHub, reportJSON } from './reporter.js';
 import { minimatch } from 'minimatch';
 /**
  * Run the graph validation pipeline and return an exit code.
@@ -24,6 +25,9 @@ export async function runGraph(options) {
         : process.cwd();
     // (a) Load config — may throw ConfigError, handled by caller.
     const config = loadConfig(rootDir);
+    // (a2) Auto-detect repository format and store in config for graph validation.
+    const format = detectFormat(rootDir, config);
+    config.format = format;
     // (b) Build glob patterns from paths (default to config.skills_root).
     const rawPaths = options.paths && options.paths.length > 0
         ? options.paths
@@ -35,8 +39,9 @@ export async function runGraph(options) {
         }
         return resolved;
     });
-    // (c) Extract all files.
-    let results = await extractAll(patterns, config.ignore);
+    // (c) Extract all files, passing format for plugin discovery.
+    const isPluginFormat = format === 'plugin' || format === 'multi-plugin';
+    let results = await extractAll(patterns, config.ignore, isPluginFormat ? format : undefined);
     // (d) Apply ignore patterns from config.
     if (config.ignore.length > 0) {
         results = results.filter((r) => {
@@ -50,18 +55,28 @@ export async function runGraph(options) {
     }
     // (e) Zero files found — report and exit 0.
     if (results.length === 0) {
-        process.stdout.write('0 files checked\n');
+        if (options.format === 'json') {
+            process.stdout.write('[]\n');
+        }
+        else {
+            process.stdout.write('0 files checked\n');
+        }
         return 0;
     }
     // (f) Validate graph.
-    const validationResults = validateGraph(results, config);
+    const validationResults = validateGraph(results, config, rootDir);
     // (g) Format and print report.
-    const output = options.format === 'github'
-        ? reportGitHub(validationResults, rootDir)
-        : reportTerminal(validationResults, results.length);
-    // (h) Print to stdout (skip empty output for clean CI).
-    if (output.length > 0) {
-        process.stdout.write(output + '\n');
+    if (options.format === 'json') {
+        process.stdout.write(reportJSON(validationResults) + '\n');
+    }
+    else {
+        const output = options.format === 'github'
+            ? reportGitHub(validationResults, rootDir)
+            : reportTerminal(validationResults, results.length);
+        // (h) Print to stdout (skip empty output for clean CI).
+        if (output.length > 0) {
+            process.stdout.write(output + '\n');
+        }
     }
     // (i) --strict: warnings count as errors.
     if (options.strict) {
