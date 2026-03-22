@@ -6,6 +6,11 @@ const SEGMENT_TYPE_MAP: ReadonlyMap<string, FileType> = new Map([
   ['agents', 'agent'],
   ['context', 'context'],
   ['skills', 'skill'],
+  ['reference', 'context'],
+  ['shared', 'context'],
+  ['examples', 'context'],
+  ['templates', 'context'],
+  ['themes', 'context'],
 ]);
 
 /**
@@ -60,8 +65,20 @@ export function classifyFile(
     return hasFrontmatter ? 'agent' : 'legacy-agent';
   }
 
-  // Non-SKILL.md markdown in skills/ dirs → readme
+  // Non-SKILL.md markdown in skills/ dirs:
+  // - Directly in skills/name/ → readme
+  // - In skills/name/subdir/ where subdir is not in SEGMENT_TYPE_MAP → unknown
+  //   (If the subdir were recognized, it would have overridden matchedType.)
   if (matchedType === 'skill') {
+    const skillsIdx = segments.lastIndexOf('skills');
+    // afterSkills = [skillName, ...subdirs, basename]
+    const afterSkills = segments.slice(skillsIdx + 1);
+    if (afterSkills.length > 2) {
+      // File is nested in a subdirectory of the skill folder, and that
+      // subdirectory is unrecognized (otherwise matchedType would not
+      // still be 'skill'). Classify as unknown.
+      return 'unknown';
+    }
     return 'readme';
   }
 
