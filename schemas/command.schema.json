@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://skill-lint.dev/schemas/command.schema.json",
+  "title": "Claude Code Command Frontmatter",
+  "description": "JSON Schema for Claude Code command skill file frontmatter",
+  "type": "object",
+  "required": ["description"],
+  "properties": {
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of what the command does"
+    },
+    "argument-hint": {
+      "type": "string",
+      "description": "Hint shown to the user for the command argument"
+    },
+    "model": {
+      "type": "string",
+      "description": "Preferred model to use when running this command"
+    },
+    "allowed-tools": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "List of tools the command is permitted to use"
+    }
+  },
+  "additionalProperties": true
+}
