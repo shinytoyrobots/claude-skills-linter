@@ -2,6 +2,7 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { runLint } from './lint.js';
 import { runGraph } from './graph.js';
+import { runInit } from './init.js';
 import { ConfigError } from './config.js';
 import { ChangedFilesError } from './changed-files.js';
 
@@ -126,10 +127,15 @@ const cli = yargs(hideBin(process.argv))
   .command(
     'init',
     'Create a .skill-lint.yaml configuration file',
-    () => {},
-    () => {
-      // Stub handler — exits 0
-      process.exit(0);
+    (yargs) =>
+      yargs.option('force', {
+        describe: 'Overwrite existing .skill-lint.yaml',
+        type: 'boolean',
+        default: false,
+      }),
+    (argv) => {
+      const exitCode = runInit(process.cwd(), { force: argv.force });
+      process.exit(exitCode);
     },
   )
   .demandCommand(1, 'You must specify a command')
