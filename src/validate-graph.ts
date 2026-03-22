@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { dirname, resolve, relative } from 'node:path';
+import { basename, dirname, resolve, relative } from 'node:path';
 import type { ExtractResult, Config, RepoFormat, ValidationResult } from './types.js';
 
 /**
@@ -89,7 +89,12 @@ function repoRelativeKey(filePath: string, skillsRoot: string): string {
  * plugin-based, or deeply nested.
  */
 function canonicalName(filePath: string, fileType: string): string {
-  const basename = filePath.split('/').pop() ?? filePath;
+  // For skill files (SKILL.md), identity comes from the parent directory name
+  // (the skill folder), not the filename — every skill file is named SKILL.md
+  // so using the filename would produce collisions in multi-plugin repos.
+  const name = fileType === 'skill'
+    ? basename(dirname(filePath))
+    : basename(filePath);
   // Map fileType to the directory name Claude Code uses on install.
   const typeDir =
     fileType === 'command' ? 'commands' :
@@ -97,7 +102,7 @@ function canonicalName(filePath: string, fileType: string): string {
     fileType === 'context' ? 'context' :
     fileType === 'skill' ? 'skills' :
     fileType; // readme, unknown — won't typically be referenced
-  return `${typeDir}/${basename}`;
+  return `${typeDir}/${name}`;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { dirname, resolve, relative } from 'node:path';
+import { basename, dirname, resolve, relative } from 'node:path';
 /**
  * Installed-path prefix used by Claude Code for skill files.
  * Stripped during normalization to produce repo-relative paths.
@@ -81,14 +81,19 @@ function repoRelativeKey(filePath, skillsRoot) {
  * plugin-based, or deeply nested.
  */
 function canonicalName(filePath, fileType) {
-    const basename = filePath.split('/').pop() ?? filePath;
+    // For skill files (SKILL.md), identity comes from the parent directory name
+    // (the skill folder), not the filename — every skill file is named SKILL.md
+    // so using the filename would produce collisions in multi-plugin repos.
+    const name = fileType === 'skill'
+        ? basename(dirname(filePath))
+        : basename(filePath);
     // Map fileType to the directory name Claude Code uses on install.
     const typeDir = fileType === 'command' ? 'commands' :
         fileType === 'agent' || fileType === 'legacy-agent' ? 'agents' :
             fileType === 'context' ? 'context' :
                 fileType === 'skill' ? 'skills' :
                     fileType; // readme, unknown — won't typically be referenced
-    return `${typeDir}/${basename}`;
+    return `${typeDir}/${name}`;
 }
 function buildCanonicalIndex(files) {
     const nameToPath = new Map();

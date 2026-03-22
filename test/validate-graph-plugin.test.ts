@@ -579,3 +579,235 @@ describe('validateGraph — plugin edge cases', () => {
     assert.equal(broken.length, 0);
   });
 });
+
+// =============================================================================
+// Story-021: SKILL.md canonical name uses parent dir, not filename
+// =============================================================================
+
+describe('validateGraph — story-021: SKILL.md canonical name fix', () => {
+  // AC-1: plugins/foo/skills/bar/SKILL.md → canonical name skills/bar
+  it('AC-1: SKILL.md canonical name uses parent dir name, not filename', () => {
+    const skill = makeResult({
+      filePath: '/repo/plugins/foo/skills/bar/SKILL.md',
+      fileType: 'skill',
+      bodyText: 'A skill.',
+    });
+    const command = makeResult({
+      filePath: '/repo/commands/test.md',
+      fileType: 'command',
+      bodyText: 'No refs.',
+    });
+
+    const config = makeConfig({ format: 'multi-plugin' });
+    const results = validateGraph([skill, command], config, '/repo');
+    const collisions = results.filter((r) => r.rule === 'name-collision');
+
+    // Single skill file should never produce a name collision.
+    assert.equal(collisions.length, 0);
+  });
+
+  // AC-2: Two SKILL.md files in different skill dirs → no name collision
+  it('AC-2: two SKILL.md files in different skill dirs produce no collision', () => {
+    const skillA = makeResult({
+      filePath: '/repo/plugins/foo/skills/bar/SKILL.md',
+      fileType: 'skill',
+      bodyText: 'Skill bar.',
+    });
+    const skillB = makeResult({
+      filePath: '/repo/plugins/foo/skills/baz/SKILL.md',
+      fileType: 'skill',
+      bodyText: 'Skill baz.',
+    });
+
+    const config = makeConfig({ format: 'multi-plugin' });
+    const results = validateGraph([skillA, skillB], config, '/repo');
+    const collisions = results.filter((r) => r.rule === 'name-collision');
+
+    assert.equal(collisions.length, 0, `Expected no collisions, got: ${JSON.stringify(collisions)}`);
+  });
+
+  // AC-2b: Multiple SKILL.md files across plugins → no collision when parent dirs differ
+  it('AC-2b: SKILL.md files across different plugins with unique skill dirs produce no collision', () => {
+    const skillA = makeResult({
+      filePath: '/repo/plugins/alpha/skills/deploy/SKILL.md',
+      fileType: 'skill',
+      bodyText: 'Deploy skill from alpha.',
+    });
+    const skillB = makeResult({
+      filePath: '/repo/plugins/beta/skills/review/SKILL.md',
+      fileType: 'skill',
+      bodyText: 'Review skill from beta.',
+    });
+    const skillC = makeResult({
+      filePath: '/repo/plugins/gamma/skills/test/SKILL.md',
+      fileType: 'skill',
+      bodyText: 'Test skill from gamma.',
+    });
+
+    const config = makeConfig({ format: 'multi-plugin' });
+    const results = validateGraph([skillA, skillB, skillC], config, '/repo');
+    const collisions = results.filter((r) => r.rule === 'name-collision');
+
+    assert.equal(collisions.length, 0);
+  });
+
+  // AC-3: Two SKILL.md files with same parent dir name across plugins → report collision
+  it('AC-3: same parent dir name across plugins reports name collision', () => {
+    const skillA = makeResult({
+      filePath: '/repo/plugins/alpha/skills/deploy/SKILL.md',
+      fileType: 'skill',
+      bodyText: 'Deploy skill from alpha.',
+    });
+    const skillB = makeResult({
+      filePath: '/repo/plugins/beta/skills/deploy/SKILL.md',
+      fileType: 'skill',
+      bodyText: 'Deploy skill from beta.',
+    });
+
+    const config = makeConfig({ format: 'multi-plugin' });
+    const results = validateGraph([skillA, skillB], config, '/repo');
+    const collisions = results.filter((r) => r.rule === 'name-collision');
+
+    assert.ok(collisions.length > 0, 'Should report collision for same parent dir name');
+    assert.ok(collisions[0].message.includes('skills/deploy'));
+  });
+
+  // AC-5: Legacy format canonical names unchanged (regression guard)
+  it('AC-5: legacy format command canonical names are unchanged', () => {
+    const cmdA = makeResult({
+      filePath: '/repo/commands/deploy.md',
+      fileType: 'command',
+      bodyText: 'See `commands/review.md`.',
+    });
+    const cmdB = makeResult({
+      filePath: '/repo/commands/review.md',
+      fileType: 'command',
+      bodyText: 'See `commands/deploy.md`.',
+    });
+
+    const config = makeConfig({ format: 'legacy-commands' });
+    const results = validateGraph([cmdA, cmdB], config, '/repo');
+    const collisions = results.filter((r) => r.rule === 'name-collision');
+
+    assert.equal(collisions.length, 0, 'Unique command filenames should not collide');
+  });
+
+  it('AC-5: legacy format context/agent canonical names unchanged', () => {
+    const ctx = makeResult({
+      filePath: '/repo/context/rules.md',
+      fileType: 'context',
+      bodyText: 'Rules.',
+    });
+    const agent = makeResult({
+      filePath: '/repo/agents/helper.md',
+      fileType: 'agent',
+      bodyText: 'Helper.',
+    });
+    const cmd = makeResult({
+      filePath: '/repo/commands/cmd.md',
+      fileType: 'command',
+      bodyText: 'See `context/rules.md` and `agents/helper.md`.',
+    });
+
+    const config = makeConfig({ format: 'legacy-commands' });
+    const results = validateGraph([ctx, agent, cmd], config, '/repo');
+
+    assert.equal(results.length, 0, `Expected clean graph, got: ${JSON.stringify(results)}`);
+  });
+
+  // Verify all four graph functions work after the fix
+  it('broken-ref detection works with skill files after fix', () => {
+    const skill = makeResult({
+      filePath: '/repo/plugins/foo/skills/bar/SKILL.md',
+      fileType: 'skill',
+      bodyText: 'See ../../context/missing.md for details.',
+    });
+
+    const config = makeConfig({ format: 'multi-plugin' });
+    const results = validateGraph([skill], config, '/repo');
+    const broken = results.filter((r) => r.rule === 'broken-reference');
+
+    assert.equal(broken.length, 1);
+    assert.ok(broken[0].message.includes('missing.md'));
+  });
+
+  it('orphan detection works with skill files after fix', () => {
+    const skill = makeResult({
+      filePath: '/repo/plugins/foo/skills/bar/SKILL.md',
+      fileType: 'skill',
+      bodyText: 'Read ../../context/used.md for details.',
+    });
+    const usedCtx = makeResult({
+      filePath: '/repo/plugins/foo/context/used.md',
+      fileType: 'context',
+    });
+    const orphanCtx = makeResult({
+      filePath: '/repo/plugins/foo/context/unused.md',
+      fileType: 'context',
+    });
+
+    const config = makeConfig({ format: 'multi-plugin' });
+    const results = validateGraph([skill, usedCtx, orphanCtx], config, '/repo');
+    const orphans = results.filter((r) => r.rule === 'orphaned-file');
+
+    assert.equal(orphans.length, 1);
+    assert.equal(orphans[0].filePath, '/repo/plugins/foo/context/unused.md');
+  });
+
+  it('cycle detection works with skill files after fix', () => {
+    const skill = makeResult({
+      filePath: '/repo/plugins/foo/skills/bar/SKILL.md',
+      fileType: 'skill',
+      bodyText: 'Read ../../context/shared.md for details.',
+    });
+    const ctx = makeResult({
+      filePath: '/repo/plugins/foo/context/shared.md',
+      fileType: 'context',
+      bodyText: 'See ../skills/bar/SKILL.md for the skill.',
+    });
+
+    const config = makeConfig({ format: 'multi-plugin' });
+    const results = validateGraph([skill, ctx], config, '/repo');
+    const cycles = results.filter((r) => r.rule === 'reference-cycle');
+
+    assert.equal(cycles.length, 1, 'Should detect cycle via relative paths');
+    assert.ok(cycles[0].message.includes('→'));
+  });
+
+  it('name-collision detection works correctly after fix', () => {
+    // Same parent dir name = collision
+    const skillA = makeResult({
+      filePath: '/repo/plugins/alpha/skills/deploy/SKILL.md',
+      fileType: 'skill',
+      bodyText: 'Alpha deploy.',
+    });
+    const skillB = makeResult({
+      filePath: '/repo/plugins/beta/skills/deploy/SKILL.md',
+      fileType: 'skill',
+      bodyText: 'Beta deploy.',
+    });
+    // Different parent dir name = no collision
+    const skillC = makeResult({
+      filePath: '/repo/plugins/alpha/skills/review/SKILL.md',
+      fileType: 'skill',
+      bodyText: 'Alpha review.',
+    });
+
+    const config = makeConfig({ format: 'multi-plugin' });
+    const results = validateGraph([skillA, skillB, skillC], config, '/repo');
+    const collisions = results.filter((r) => r.rule === 'name-collision');
+
+    // Only the two deploy skills should collide, not review.
+    const collisionPaths = collisions.map((c) => c.filePath);
+    assert.ok(collisions.length >= 1, 'Should report collision for deploy skills');
+    assert.ok(
+      collisions.some((c) => c.message.includes('skills/deploy')),
+      'Collision message should mention skills/deploy',
+    );
+    // review skill should NOT appear in collisions.
+    assert.ok(
+      !collisionPaths.includes('/repo/plugins/alpha/skills/review/SKILL.md'),
+      'Review skill should not be in collisions',
+    );
+  });
+});
