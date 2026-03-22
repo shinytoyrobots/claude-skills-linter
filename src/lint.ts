@@ -10,8 +10,10 @@ import { extractAll, extractFile } from './extract.js';
 import { validateFrontmatter } from './validate-frontmatter.js';
 import { validateManifest } from './validate-manifest.js';
 import { reportTerminal, reportGitHub, reportJSON } from './reporter.js';
+import { execFileSync } from 'node:child_process';
 import { minimatch } from 'minimatch';
 import { getChangedFiles, ChangedFilesError } from './changed-files.js';
+import { checkRatchet } from './profiles.js';
 
 /** Options passed from the CLI to the lint orchestrator. */
 export interface LintOptions {
@@ -78,6 +80,20 @@ export async function runLint(options: LintOptions): Promise<number> {
     // Validate frontmatter.
     const validationResults = await validateFrontmatter(results, options.level, config);
 
+    // Ratchet check (AC-9: additive, AC-10: only changed files).
+    if (options.ratchet) {
+      try {
+        const gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+          encoding: 'utf-8',
+        }).trim();
+        const ratchetResults = await checkRatchet(results, options.base, gitRoot, config);
+        validationResults.push(...ratchetResults);
+      } catch {
+        // AC-7: base ref not fetchable → warning, skip ratchet
+        process.stderr.write(`warning: could not read base ref "${options.base}", skipping ratchet\n`);
+      }
+    }
+
     // Format and print report.
     if (options.format === 'json') {
       process.stdout.write(reportJSON(validationResults) + '\n');
@@ -96,12 +112,6 @@ export async function runLint(options: LintOptions): Promise<number> {
     const hasErrors = validationResults.some((r) => r.severity === 'error');
     if (hasErrors) return 1;
 
-    return 0;
-  }
-
-  // (c) Stub: --ratchet (AC-9)
-  if (options.ratchet) {
-    process.stderr.write('Not yet implemented\n');
     return 0;
   }
 
@@ -153,6 +163,20 @@ export async function runLint(options: LintOptions): Promise<number> {
   if (isPluginFormat) {
     const manifestResults = validateManifest(rootDir, format, config);
     validationResults.push(...manifestResults);
+  }
+
+  // (i2) Ratchet check for full-scan path (AC-9: additive).
+  if (options.ratchet) {
+    try {
+      const gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+        encoding: 'utf-8',
+      }).trim();
+      const ratchetResults = await checkRatchet(results, options.base, gitRoot, config);
+      validationResults.push(...ratchetResults);
+    } catch {
+      // AC-7: base ref not fetchable → warning, skip ratchet
+      process.stderr.write(`warning: could not read base ref "${options.base}", skipping ratchet\n`);
+    }
   }
 
   // (j) Format and print report.
