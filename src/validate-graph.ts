@@ -53,17 +53,67 @@ function findLine(text: string, needle: string): number | undefined {
 }
 
 /**
- * Build a canonical key for looking up files by their repo-relative path.
- * The ExtractResult filePath is absolute; we derive a repo-relative key
- * by stripping the skills_root prefix (with trailing slash).
+ * Build a repo-relative key from an absolute file path by stripping skills_root.
  */
-function fileKey(filePath: string, skillsRoot: string): string {
+function repoRelativeKey(filePath: string, skillsRoot: string): string {
   const root = skillsRoot.endsWith('/') ? skillsRoot : skillsRoot + '/';
   if (filePath.startsWith(root)) {
     return filePath.slice(root.length);
   }
-  // Fallback: use the full path (shouldn't normally happen).
   return filePath;
+}
+
+/**
+ * Build a canonical name from a file's type and basename.
+ *
+ * Claude Code installs skills into a flat `~/.claude/commands/{type}/{filename}`
+ * structure regardless of repo organization. So the canonical identity of any
+ * skill file is `{type}/{basename}` — e.g., `context/output-patterns.md`.
+ *
+ * This allows reference resolution across any repo structure: flat, suite-based,
+ * plugin-based, or deeply nested.
+ */
+function canonicalName(filePath: string, fileType: string): string {
+  const basename = filePath.split('/').pop() ?? filePath;
+  // Map fileType to the directory name Claude Code uses on install.
+  const typeDir =
+    fileType === 'command' ? 'commands' :
+    fileType === 'agent' || fileType === 'legacy-agent' ? 'agents' :
+    fileType === 'context' ? 'context' :
+    fileType; // readme, unknown — won't typically be referenced
+  return `${typeDir}/${basename}`;
+}
+
+/**
+ * Canonical name index: maps canonical names to actual file paths.
+ * Detects name collisions (multiple files with the same canonical name).
+ */
+interface CanonicalIndex {
+  /** canonical name → absolute file path (first seen) */
+  nameToPath: Map<string, string>;
+  /** canonical names that have collisions */
+  collisions: Map<string, string[]>;
+}
+
+function buildCanonicalIndex(files: ExtractResult[]): CanonicalIndex {
+  const nameToPath = new Map<string, string>();
+  const collisions = new Map<string, string[]>();
+
+  for (const file of files) {
+    if (file.errors.length > 0) continue;
+    const cn = canonicalName(file.filePath, file.fileType);
+    const existing = nameToPath.get(cn);
+    if (existing !== undefined) {
+      // Collision — track both files.
+      const list = collisions.get(cn) ?? [existing];
+      list.push(file.filePath);
+      collisions.set(cn, list);
+    } else {
+      nameToPath.set(cn, file.filePath);
+    }
+  }
+
+  return { nameToPath, collisions };
 }
 
 /**
@@ -87,12 +137,12 @@ function extractRefs(bodyText: string): Array<{ raw: string; normalized: string 
 }
 
 /**
- * Detect broken references: references that don't resolve to any file in the set.
+ * Detect broken references: references that don't resolve to any file
+ * via canonical name lookup.
  */
 function detectBrokenRefs(
   files: ExtractResult[],
-  fileSet: Set<string>,
-  skillsRoot: string,
+  index: CanonicalIndex,
 ): ValidationResult[] {
   const results: ValidationResult[] = [];
 
@@ -103,7 +153,8 @@ function detectBrokenRefs(
     const refs = extractRefs(bodyText);
 
     for (const ref of refs) {
-      if (!fileSet.has(ref.normalized)) {
+      // The normalized ref is already in canonical form (e.g., "context/foo.md").
+      if (!index.nameToPath.has(ref.normalized)) {
         const line = findLine(bodyText, ref.raw);
         results.push({
           filePath: file.filePath,
@@ -121,15 +172,15 @@ function detectBrokenRefs(
 
 /**
  * Detect orphaned files: context or agent files that no command references.
+ * Uses canonical names so that references resolve regardless of repo structure.
  */
 function detectOrphans(
   files: ExtractResult[],
-  skillsRoot: string,
 ): ValidationResult[] {
   const results: ValidationResult[] = [];
 
-  // Collect all references from command files only.
-  const referencedKeys = new Set<string>();
+  // Collect all canonical names referenced from command files.
+  const referencedCanonical = new Set<string>();
 
   for (const file of files) {
     if (file.errors.length > 0) continue;
@@ -138,17 +189,17 @@ function detectOrphans(
     const bodyText = (file.data['___body_text'] as string) ?? '';
     const refs = extractRefs(bodyText);
     for (const ref of refs) {
-      referencedKeys.add(ref.normalized);
+      referencedCanonical.add(ref.normalized);
     }
   }
 
-  // Check context and agent files.
+  // Check context and agent files by their canonical name.
   for (const file of files) {
     if (file.errors.length > 0) continue;
     if (file.fileType !== 'context' && file.fileType !== 'agent') continue;
 
-    const key = fileKey(file.filePath, skillsRoot);
-    if (!referencedKeys.has(key)) {
+    const cn = canonicalName(file.filePath, file.fileType);
+    if (!referencedCanonical.has(cn)) {
       results.push({
         filePath: file.filePath,
         rule: 'orphaned-file',
@@ -210,29 +261,29 @@ const enum Color {
 
 /**
  * Detect cycles in the reference graph using DFS with WHITE/GRAY/BLACK coloring.
+ * Uses canonical names for adjacency so references resolve across any repo structure.
  */
 function detectCycles(
   files: ExtractResult[],
-  fileSet: Set<string>,
-  skillsRoot: string,
+  index: CanonicalIndex,
 ): ValidationResult[] {
   const results: ValidationResult[] = [];
 
-  // Build adjacency list using repo-relative keys.
+  // Build adjacency list using canonical names.
   const adjacency = new Map<string, string[]>();
   const keyToFilePath = new Map<string, string>();
 
   for (const file of files) {
     if (file.errors.length > 0) continue;
 
-    const key = fileKey(file.filePath, skillsRoot);
+    const key = canonicalName(file.filePath, file.fileType);
     keyToFilePath.set(key, file.filePath);
 
     const bodyText = (file.data['___body_text'] as string) ?? '';
     const refs = extractRefs(bodyText);
     const targets = refs
       .map((r) => r.normalized)
-      .filter((t) => fileSet.has(t));
+      .filter((t) => index.nameToPath.has(t));
 
     adjacency.set(key, targets);
   }
@@ -307,30 +358,54 @@ function detectCycles(
 }
 
 /**
- * Validate cross-file references, orphans, duplicates, and cycles.
+ * Detect name collisions: multiple files that would map to the same installed
+ * path (same type + basename). These would overwrite each other on install.
+ */
+function detectNameCollisions(index: CanonicalIndex): ValidationResult[] {
+  const results: ValidationResult[] = [];
+
+  for (const [cn, paths] of index.collisions) {
+    for (const filePath of paths) {
+      results.push({
+        filePath,
+        rule: 'name-collision',
+        severity: 'error',
+        message: `Name collision — "${cn}" resolves to multiple files: ${paths.join(', ')}`,
+      });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Validate cross-file references, orphans, duplicates, cycles, and name collisions.
  *
  * This is the main graph validation entry point. It processes an array
  * of ExtractResults and returns ValidationResults for any issues found.
+ *
+ * Reference resolution uses canonical names ({type}/{basename}) so that
+ * references resolve regardless of repo directory structure — flat, suite-based,
+ * plugin-based, or deeply nested.
  */
 export function validateGraph(
   files: ExtractResult[],
   config: Config,
 ): ValidationResult[] {
   const results: ValidationResult[] = [];
-  const skillsRoot = config.skills_root;
 
-  // Build the set of known file keys (repo-relative paths).
-  const validFiles = files.filter((f) => f.errors.length === 0);
-  const fileSet = new Set<string>(
-    validFiles.map((f) => fileKey(f.filePath, skillsRoot)),
-  );
+  // Build canonical name index for reference resolution.
+  const index = buildCanonicalIndex(files);
+
+  // Name collisions (always checked — these are install-time bugs).
+  results.push(...detectNameCollisions(index));
 
   // AC-1, AC-2: Broken references.
-  results.push(...detectBrokenRefs(files, fileSet, skillsRoot));
+  results.push(...detectBrokenRefs(files, index));
 
   // AC-3: Orphaned files (only if enabled).
   if (config.graph.warn_orphans) {
-    results.push(...detectOrphans(files, skillsRoot));
+    results.push(...detectOrphans(files));
   }
 
   // AC-4: Duplicate content (only if enabled).
@@ -340,7 +415,7 @@ export function validateGraph(
 
   // AC-5: Cycle detection (only if enabled).
   if (config.graph.detect_cycles) {
-    results.push(...detectCycles(files, fileSet, skillsRoot));
+    results.push(...detectCycles(files, index));
   }
 
   return results;
