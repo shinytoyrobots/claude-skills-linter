@@ -91,10 +91,11 @@ describe('extractAll — plugin format', () => {
       'plugin',
     );
 
-    // Should find: skills/deploy/SKILL.md, skills/no-fm/SKILL.md,
-    // context/project-rules.md, agents/reviewer.md
-    // Should NOT find: CLAUDE.md, skills/deploy/no-frontmatter-skill.md
-    assert.ok(results.length >= 4, `expected >= 4 results, got ${results.length}`);
+    // Should find: skills/deploy/SKILL.md, skills/deploy/no-frontmatter-skill.md,
+    // skills/no-fm/SKILL.md, context/project-rules.md, agents/reviewer.md
+    // plus any new subdirectory fixtures (story-028)
+    // Should NOT find: CLAUDE.md
+    assert.ok(results.length >= 5, `expected >= 5 results, got ${results.length}`);
 
     const paths = results.map((r) => r.filePath);
     assert.ok(
@@ -120,11 +121,16 @@ describe('extractAll — plugin format', () => {
       'should not discover CLAUDE.md via plugin patterns',
     );
 
-    // Non-SKILL.md in skills/ should NOT be discovered
+    // Non-SKILL.md in skills/ IS now discovered (story-028: skills/**/*.md glob)
     assert.ok(
-      !paths.some((p) => p.includes('no-frontmatter-skill.md')),
-      'should not discover non-SKILL.md files in skills/',
+      paths.some((p) => p.includes('no-frontmatter-skill.md')),
+      'should discover non-SKILL.md files in skills/ subdirectories',
     );
+
+    // Verify no-frontmatter-skill.md is classified as readme
+    const noFmResult = results.find((r) => r.filePath.includes('no-frontmatter-skill.md'));
+    assert.ok(noFmResult, 'no-frontmatter-skill.md should be in results');
+    assert.equal(noFmResult!.fileType, 'readme', 'non-SKILL.md in skills/ should be readme');
   });
 
   it('AC-3: SKILL.md files are classified as skill type', async () => {
@@ -172,6 +178,199 @@ describe('extractAll — plugin format', () => {
 });
 
 // ---------------------------------------------------------------------------
+// story-028: classify subdirectory types
+// ---------------------------------------------------------------------------
+
+describe('classifyFile — skill subdirectory classification (story-028)', () => {
+  it('AC-2: files in agents/ subdirectory of a skill → agent', () => {
+    assert.equal(
+      classifyFile('skills/skill-creator/agents/research.md', true),
+      'agent',
+    );
+    assert.equal(
+      classifyFile('plugins/foo/skills/bar/agents/helper.md', true),
+      'agent',
+    );
+  });
+
+  it('AC-3: files in context/ subdirectory of a skill → context', () => {
+    assert.equal(
+      classifyFile('skills/my-skill/context/notes.md', true),
+      'context',
+    );
+  });
+
+  it('AC-3: files in reference/ subdirectory of a skill → context', () => {
+    assert.equal(
+      classifyFile('skills/mcp-builder/reference/mcp_best_practices.md', true),
+      'context',
+    );
+  });
+
+  it('AC-3: files in shared/ subdirectory of a skill → context', () => {
+    assert.equal(
+      classifyFile('skills/deploy/shared/common_utils.md', true),
+      'context',
+    );
+  });
+
+  it('AC-3: files in examples/ subdirectory of a skill → context', () => {
+    assert.equal(
+      classifyFile('skills/mcp-builder/examples/example_server.md', true),
+      'context',
+    );
+  });
+
+  it('AC-4: files in templates/ subdirectory of a skill → context', () => {
+    assert.equal(
+      classifyFile('skills/deploy/templates/deploy_template.md', true),
+      'context',
+    );
+  });
+
+  it('AC-4: files in themes/ subdirectory of a skill → context', () => {
+    assert.equal(
+      classifyFile('skills/deploy/themes/dark_theme.md', true),
+      'context',
+    );
+  });
+
+  it('AC-5: files in unknown subdirectory → unknown', () => {
+    assert.equal(
+      classifyFile('skills/deploy/unknown-subdir/mystery.md', true),
+      'unknown',
+    );
+    assert.equal(
+      classifyFile('skills/deploy/custom-stuff/notes.md', true),
+      'unknown',
+    );
+  });
+
+  it('agents/ subdirectory without frontmatter → legacy-agent', () => {
+    assert.equal(
+      classifyFile('skills/skill-creator/agents/research.md', false),
+      'legacy-agent',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// story-028: plugin format discovers skill subdirectories
+// ---------------------------------------------------------------------------
+
+describe('extractAll — plugin subdirectory discovery (story-028)', () => {
+  it('AC-1: discovers .md files in skill subdirectories', async () => {
+    const results = await extractAll(
+      [`${pluginRoot}/**/*.md`],
+      [],
+      'plugin',
+    );
+
+    const paths = results.map((r) => r.filePath);
+
+    // reference/ files
+    assert.ok(
+      paths.some((p) => p.includes('mcp-builder/reference/mcp_best_practices.md')),
+      'should discover reference/mcp_best_practices.md',
+    );
+    assert.ok(
+      paths.some((p) => p.includes('mcp-builder/reference/server_patterns.md')),
+      'should discover reference/server_patterns.md',
+    );
+
+    // examples/ files
+    assert.ok(
+      paths.some((p) => p.includes('mcp-builder/examples/example_server.md')),
+      'should discover examples/example_server.md',
+    );
+
+    // agents/ inside skill dir
+    assert.ok(
+      paths.some((p) => p.includes('skill-creator/agents/research.md')),
+      'should discover skill-creator/agents/research.md',
+    );
+    assert.ok(
+      paths.some((p) => p.includes('skill-creator/agents/writer.md')),
+      'should discover skill-creator/agents/writer.md',
+    );
+    assert.ok(
+      paths.some((p) => p.includes('skill-creator/agents/reviewer.md')),
+      'should discover skill-creator/agents/reviewer.md',
+    );
+  });
+
+  it('AC-2: agents/ in skill dir classified as agent', async () => {
+    const results = await extractAll(
+      [`${pluginRoot}/**/*.md`],
+      [],
+      'plugin',
+    );
+
+    const skillAgents = results.filter(
+      (r) => r.filePath.includes('skill-creator/agents/'),
+    );
+    assert.equal(skillAgents.length, 3, 'should find 3 agent files in skill-creator/agents/');
+    for (const a of skillAgents) {
+      assert.equal(a.fileType, 'agent', `${a.filePath} should be agent`);
+    }
+  });
+
+  it('AC-3: reference/ and examples/ classified as context', async () => {
+    const results = await extractAll(
+      [`${pluginRoot}/**/*.md`],
+      [],
+      'plugin',
+    );
+
+    const refFiles = results.filter((r) => r.filePath.includes('/reference/'));
+    assert.ok(refFiles.length >= 2, 'should find reference files');
+    for (const rf of refFiles) {
+      assert.equal(rf.fileType, 'context', `${rf.filePath} should be context`);
+    }
+
+    const exFiles = results.filter((r) => r.filePath.includes('/examples/'));
+    assert.ok(exFiles.length >= 1, 'should find example files');
+    for (const ef of exFiles) {
+      assert.equal(ef.fileType, 'context', `${ef.filePath} should be context`);
+    }
+  });
+
+  it('AC-4: templates/ and themes/ classified as context', async () => {
+    const results = await extractAll(
+      [`${pluginRoot}/**/*.md`],
+      [],
+      'plugin',
+    );
+
+    const templateFiles = results.filter((r) => r.filePath.includes('/templates/'));
+    assert.ok(templateFiles.length >= 1, 'should find template files');
+    for (const tf of templateFiles) {
+      assert.equal(tf.fileType, 'context', `${tf.filePath} should be context`);
+    }
+
+    const themeFiles = results.filter((r) => r.filePath.includes('/themes/'));
+    assert.ok(themeFiles.length >= 1, 'should find theme files');
+    for (const tf of themeFiles) {
+      assert.equal(tf.fileType, 'context', `${tf.filePath} should be context`);
+    }
+  });
+
+  it('AC-5: unknown subdirectory classified as unknown', async () => {
+    const results = await extractAll(
+      [`${pluginRoot}/**/*.md`],
+      [],
+      'plugin',
+    );
+
+    const unknownFile = results.find((r) =>
+      r.filePath.includes('unknown-subdir/mystery.md'),
+    );
+    assert.ok(unknownFile, 'should discover file in unknown subdirectory');
+    assert.equal(unknownFile!.fileType, 'unknown', 'unknown subdir → unknown type');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // extractAll — multi-plugin format
 // ---------------------------------------------------------------------------
 
@@ -183,7 +382,7 @@ describe('extractAll — multi-plugin format', () => {
       'multi-plugin',
     );
 
-    assert.ok(results.length >= 3, `expected >= 3 results, got ${results.length}`);
+    assert.ok(results.length >= 4, `expected >= 4 results, got ${results.length}`);
 
     const paths = results.map((r) => r.filePath);
     assert.ok(
@@ -198,6 +397,26 @@ describe('extractAll — multi-plugin format', () => {
       paths.some((p) => p.includes('plugins/foo/agents/helper.md')),
       'should discover plugins/foo/agents/helper.md',
     );
+  });
+
+  it('AC-6: discovers skill subdirectory files in multi-plugin format', async () => {
+    const results = await extractAll(
+      [`${multiPluginRoot}/**/*.md`],
+      [],
+      'multi-plugin',
+    );
+
+    const paths = results.map((r) => r.filePath);
+    assert.ok(
+      paths.some((p) => p.includes('plugins/foo/skills/bar/reference/api_docs.md')),
+      'should discover reference file in multi-plugin skill subdirectory',
+    );
+
+    const refFile = results.find((r) =>
+      r.filePath.includes('bar/reference/api_docs.md'),
+    );
+    assert.ok(refFile, 'should find api_docs.md');
+    assert.equal(refFile!.fileType, 'context', 'reference file should be context');
   });
 
   it('AC-6: plugin dir name and skill dir name may differ', async () => {

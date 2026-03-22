@@ -83,11 +83,12 @@ export function extractFile(filePath: string): ExtractResult {
 /**
  * Build glob patterns for plugin format discovery.
  *
- * Plugin format: skills/{name}/SKILL.md, context/{name}.md, agents/{name}.md
+ * Plugin format: skills/{name}/**\/*.md (all markdown in skill dirs),
+ * context/{name}.md, agents/{name}.md
  */
 function pluginPatterns(root: string): string[] {
   return [
-    `${root}/skills/*/SKILL.md`,
+    `${root}/skills/**/*.md`,
     `${root}/context/*.md`,
     `${root}/agents/*.md`,
   ];
@@ -96,11 +97,12 @@ function pluginPatterns(root: string): string[] {
 /**
  * Build glob patterns for multi-plugin format discovery.
  *
- * Multi-plugin: plugins/{p}/skills/{s}/SKILL.md, plugins/{p}/context/{n}.md, plugins/{p}/agents/{n}.md
+ * Multi-plugin: plugins/{p}/skills/**\/*.md (all markdown in skill dirs),
+ * plugins/{p}/context/{n}.md, plugins/{p}/agents/{n}.md
  */
 function multiPluginPatterns(root: string): string[] {
   return [
-    `${root}/plugins/*/skills/*/SKILL.md`,
+    `${root}/plugins/*/skills/**/*.md`,
     `${root}/plugins/*/context/*.md`,
     `${root}/plugins/*/agents/*.md`,
   ];
