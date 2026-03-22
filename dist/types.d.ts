@@ -2,6 +2,8 @@
  * Shared types for the skill-lint project.
  * Canonical home for all types used across stories.
  */
+/** Detected repository format for skill file organization. */
+export type RepoFormat = 'legacy-commands' | 'plugin' | 'multi-plugin';
 /** Classification of a skill file based on its path. */
 export type FileType = 'command' | 'agent' | 'legacy-agent' | 'context' | 'readme' | 'unknown';
 /** An error encountered during frontmatter parsing. */
@@ -53,5 +55,6 @@ export type Config = {
     prefixes: string | Record<string, string>;
     ignore: string[];
     graph: GraphConfig;
+    format?: RepoFormat;
 };
 //# sourceMappingURL=types.d.ts.map

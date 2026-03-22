@@ -3,6 +3,9 @@
  * Canonical home for all types used across stories.
  */
 
+/** Detected repository format for skill file organization. */
+export type RepoFormat = 'legacy-commands' | 'plugin' | 'multi-plugin';
+
 /** Classification of a skill file based on its path. */
 export type FileType =
   | 'command'
@@ -68,4 +71,5 @@ export type Config = {
   prefixes: string | Record<string, string>;
   ignore: string[];
   graph: GraphConfig;
+  format?: RepoFormat;
 };

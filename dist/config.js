@@ -97,6 +97,7 @@ export function loadConfig(rootDir) {
         ignore: merged.ignore,
         prefixes: merged.prefixes,
         graph: merged.graph,
+        ...(merged.format !== undefined ? { format: merged.format } : {}),
     };
 }
 //# sourceMappingURL=config.js.map
