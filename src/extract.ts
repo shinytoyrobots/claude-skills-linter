@@ -79,11 +79,15 @@ export function extractFile(filePath: string): ExtractResult {
  */
 export async function extractAll(
   patterns: string[],
+  ignore: string[] = [],
 ): Promise<ExtractResult[]> {
   const files: string[] = [];
 
   for (const pattern of patterns) {
-    const matched = await glob(pattern, { nodir: true });
+    const matched = await glob(pattern, {
+      nodir: true,
+      ignore: ['**/node_modules/**', ...ignore],
+    });
     files.push(...matched);
   }
 

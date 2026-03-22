@@ -36,7 +36,7 @@ export async function runGraph(options) {
         return resolved;
     });
     // (c) Extract all files.
-    let results = await extractAll(patterns);
+    let results = await extractAll(patterns, config.ignore);
     // (d) Apply ignore patterns from config.
     if (config.ignore.length > 0) {
         results = results.filter((r) => {

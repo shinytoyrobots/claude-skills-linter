@@ -12,5 +12,5 @@ export declare function extractFile(filePath: string): ExtractResult;
  *
  * Returns an empty array when no files match (AC-6).
  */
-export declare function extractAll(patterns: string[]): Promise<ExtractResult[]>;
+export declare function extractAll(patterns: string[], ignore?: string[]): Promise<ExtractResult[]>;
 //# sourceMappingURL=extract.d.ts.map

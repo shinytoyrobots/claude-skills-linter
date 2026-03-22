@@ -70,10 +70,13 @@ export function extractFile(filePath) {
  *
  * Returns an empty array when no files match (AC-6).
  */
-export async function extractAll(patterns) {
+export async function extractAll(patterns, ignore = []) {
     const files = [];
     for (const pattern of patterns) {
-        const matched = await glob(pattern, { nodir: true });
+        const matched = await glob(pattern, {
+            nodir: true,
+            ignore: ['**/node_modules/**', ...ignore],
+        });
         files.push(...matched);
     }
     // Deduplicate in case patterns overlap.
