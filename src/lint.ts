@@ -1,13 +1,15 @@
 /**
  * Orchestrator — wires the full lint pipeline end-to-end.
- * CLI args → loadConfig → extractAll → validateFrontmatter → reportTerminal → exit code
+ * CLI args → loadConfig → detectFormat → extractAll → validateFrontmatter + validateManifest → report → exit code
  */
 
 import { resolve } from 'node:path';
 import { loadConfig } from './config.js';
+import { detectFormat } from './detect-format.js';
 import { extractAll, extractFile } from './extract.js';
 import { validateFrontmatter } from './validate-frontmatter.js';
-import { reportTerminal, reportGitHub } from './reporter.js';
+import { validateManifest } from './validate-manifest.js';
+import { reportTerminal, reportGitHub, reportJSON } from './reporter.js';
 import { minimatch } from 'minimatch';
 import { getChangedFiles, ChangedFilesError } from './changed-files.js';
 
@@ -40,6 +42,9 @@ export async function runLint(options: LintOptions): Promise<number> {
   // (a) Load config — may throw ConfigError, handled by caller.
   const config = loadConfig(rootDir);
 
+  // (a2) Auto-detect repository format.
+  const format = detectFormat(rootDir, config);
+
   // (b) --changed-only: lint only files changed since base ref.
   //     ChangedFilesError is NOT caught here — the caller (cli.ts) handles it for exit code 2.
   if (options.changedOnly) {
@@ -59,7 +64,11 @@ export async function runLint(options: LintOptions): Promise<number> {
 
     // Zero changed files — report and exit 0.
     if (changedFiles.length === 0) {
-      process.stdout.write('0 files checked\n');
+      if (options.format === 'json') {
+        process.stdout.write('[]\n');
+      } else {
+        process.stdout.write('0 files checked\n');
+      }
       return 0;
     }
 
@@ -70,8 +79,12 @@ export async function runLint(options: LintOptions): Promise<number> {
     const validationResults = await validateFrontmatter(results, options.level, config);
 
     // Format and print report.
-    const output = reportTerminal(validationResults, results.length);
-    process.stdout.write(output + '\n');
+    if (options.format === 'json') {
+      process.stdout.write(reportJSON(validationResults) + '\n');
+    } else {
+      const output = reportTerminal(validationResults, results.length);
+      process.stdout.write(output + '\n');
+    }
 
     // --strict: warnings count as errors.
     if (options.strict) {
@@ -92,13 +105,7 @@ export async function runLint(options: LintOptions): Promise<number> {
     return 0;
   }
 
-  // (d) Non-terminal formats: JSON is not implemented yet.
-  if (options.format === 'json') {
-    process.stderr.write('Not yet implemented\n');
-    // Fall through to terminal output.
-  }
-
-  // (e) Build glob patterns from paths (default to config.skills_root).
+  // (d) Build glob patterns from paths (default to config.skills_root).
   const rawPaths =
     options.paths && options.paths.length > 0
       ? options.paths
@@ -113,8 +120,9 @@ export async function runLint(options: LintOptions): Promise<number> {
     return resolved;
   });
 
-  // (g) Call extractAll with patterns, passing ignore patterns to glob.
-  let results = await extractAll(patterns, config.ignore);
+  // (e) Call extractAll with patterns, passing ignore patterns and format.
+  const isPluginFormat = format === 'plugin' || format === 'multi-plugin';
+  let results = await extractAll(patterns, config.ignore, isPluginFormat ? format : undefined);
 
   // (f) Apply ignore patterns from config to filter files (AC-10).
   if (config.ignore.length > 0) {
@@ -128,24 +136,38 @@ export async function runLint(options: LintOptions): Promise<number> {
     });
   }
 
-  // (h) Zero files found — report and exit 0 (AC-11).
+  // (g) Zero files found — report and exit 0 (AC-11).
   if (results.length === 0) {
-    process.stdout.write('0 files checked\n');
+    if (options.format === 'json') {
+      process.stdout.write('[]\n');
+    } else {
+      process.stdout.write('0 files checked\n');
+    }
     return 0;
   }
 
-  // (i) Validate frontmatter.
+  // (h) Validate frontmatter.
   const validationResults = await validateFrontmatter(results, options.level, config);
 
-  // (j) Format and print report.
-  const output =
-    options.format === 'github'
-      ? reportGitHub(validationResults, rootDir)
-      : reportTerminal(validationResults, results.length);
+  // (i) Validate manifests for plugin/multi-plugin formats.
+  if (isPluginFormat) {
+    const manifestResults = validateManifest(rootDir, format, config);
+    validationResults.push(...manifestResults);
+  }
 
-  // (k) Print to stdout (skip empty output for clean CI).
-  if (output.length > 0) {
-    process.stdout.write(output + '\n');
+  // (j) Format and print report.
+  if (options.format === 'json') {
+    process.stdout.write(reportJSON(validationResults) + '\n');
+  } else {
+    const output =
+      options.format === 'github'
+        ? reportGitHub(validationResults, rootDir)
+        : reportTerminal(validationResults, results.length);
+
+    // (k) Print to stdout (skip empty output for clean CI).
+    if (output.length > 0) {
+      process.stdout.write(output + '\n');
+    }
   }
 
   // (l) --strict: warnings count as errors (AC-3).

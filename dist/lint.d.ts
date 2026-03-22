@@ -1,6 +1,6 @@
 /**
  * Orchestrator — wires the full lint pipeline end-to-end.
- * CLI args → loadConfig → extractAll → validateFrontmatter → reportTerminal → exit code
+ * CLI args → loadConfig → detectFormat → extractAll → validateFrontmatter + validateManifest → report → exit code
  */
 /** Options passed from the CLI to the lint orchestrator. */
 export interface LintOptions {

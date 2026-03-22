@@ -84,7 +84,7 @@ const cli = yargs(hideBin(process.argv))
         .option('format', {
           alias: 'f',
           describe: 'Output format',
-          choices: ['terminal', 'github'] as const,
+          choices: ['terminal', 'json', 'github'] as const,
           default: 'terminal' as const,
         })
         .option('strict', {
