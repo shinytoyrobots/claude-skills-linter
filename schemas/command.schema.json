@@ -22,6 +22,12 @@
       "type": "array",
       "items": { "type": "string" },
       "description": "List of tools the command is permitted to use"
+    },
+    "quality_level": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3,
+      "description": "Quality enforcement level for this file (0-3)"
     }
   },
   "additionalProperties": true

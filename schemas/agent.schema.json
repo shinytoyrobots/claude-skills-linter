@@ -22,6 +22,12 @@
     "model": {
       "type": "string",
       "description": "Preferred model to use when running this agent"
+    },
+    "quality_level": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 3,
+      "description": "Quality enforcement level for this file (0-3)"
     }
   },
   "additionalProperties": true

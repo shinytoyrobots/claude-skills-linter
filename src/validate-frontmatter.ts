@@ -281,7 +281,7 @@ function getRulesForFileType(fileType: string): Set<string> {
     case 'skill':
       return new Set([
         'required-fields-skill', 'non-empty-body',
-        'skill-name-format', 'file-size-limit',
+        'skill-name-format', 'model-enum', 'unknown-tool', 'tools-not-in-body', 'file-size-limit',
       ]);
     default:
       return new Set(['non-empty-body']);
