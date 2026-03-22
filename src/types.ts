@@ -32,6 +32,7 @@ export type ValidationResult = {
   rule: string;
   severity: 'error' | 'warning' | 'info';
   message: string;
+  line?: number;
 };
 
 /** Directory-level quality level overrides. */

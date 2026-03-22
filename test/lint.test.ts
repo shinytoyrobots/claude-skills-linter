@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { execSync, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -9,11 +9,12 @@ const CLI = resolve(import.meta.dirname, '..', 'bin', 'cli.js');
 const FIXTURES = resolve(import.meta.dirname, 'fixtures');
 
 /** Run the CLI and return { stdout, stderr, exitCode }. */
-function run(args: string): { stdout: string; stderr: string; exitCode: number } {
+function run(args: string, cwd?: string): { stdout: string; stderr: string; exitCode: number } {
   const argv = args.split(/\s+/).filter(Boolean);
   const result = spawnSync('node', [CLI, ...argv], {
     encoding: 'utf-8',
     env: { ...process.env, NO_COLOR: '1' },
+    cwd,
   });
   return {
     stdout: result.stdout ?? '',
@@ -26,8 +27,8 @@ describe('lint command — integration', () => {
   // AC-1: Discovers files in fixtures, produces expected results.
   it('discovers .md files and reports validation results', () => {
     const { stdout, exitCode } = run(`lint ${FIXTURES}`);
-    // Should report 8 files checked (9 .md files minus README.md ignored by default)
-    assert.ok(stdout.includes('8 files checked'), `expected "8 files checked" in: ${stdout}`);
+    // Should report 21 files checked (.md files minus README.md ignored by default)
+    assert.ok(stdout.includes('21 files checked'), `expected "21 files checked" in: ${stdout}`);
     // Should find errors (invalid-yaml.md parse error, empty-body.md)
     assert.ok(stdout.includes('2 errors'), `expected "2 errors" in: ${stdout}`);
     assert.equal(exitCode, 1, 'should exit 1 when errors exist');
@@ -66,11 +67,60 @@ describe('lint command — integration', () => {
     assert.equal(exitCode, 0, 'should exit 0 when no warnings or errors with --strict');
   });
 
-  // AC-8: --changed-only prints stub message and exits 0.
-  it('prints "Not yet implemented" for --changed-only and exits 0', () => {
-    const { stderr, exitCode } = run(`lint --changed-only ${FIXTURES}`);
-    assert.ok(stderr.includes('Not yet implemented'), `expected stub message in stderr: ${stderr}`);
+  // AC-8: --changed-only lints only changed files.
+  it('--changed-only lints only changed .md files and reports results', () => {
+    const tmp = mkdtempSync(resolve(tmpdir(), 'lint-changed-'));
+    execSync('git init -b main', { cwd: tmp });
+    execSync('git config user.email "test@test.com"', { cwd: tmp });
+    execSync('git config user.name "Test"', { cwd: tmp });
+
+    // Initial commit on main.
+    writeFileSync(resolve(tmp, 'base.md'), '---\nname: base\ndescription: Base\nmodel: sonnet\n---\n\nBody.\n');
+    execSync('git add -A && git commit -m "initial"', { cwd: tmp });
+
+    // Feature branch with a new file.
+    execSync('git checkout -b feature', { cwd: tmp });
+    writeFileSync(resolve(tmp, 'new.md'), '---\nname: new\ndescription: New skill\nmodel: sonnet\n---\n\nNew body.\n');
+    execSync('git add -A && git commit -m "add new"', { cwd: tmp });
+
+    const { stdout, exitCode } = run(`lint --changed-only --base main`, tmp);
+    assert.ok(stdout.includes('1 files checked'), `expected "1 files checked" in: ${stdout}`);
     assert.equal(exitCode, 0);
+  });
+
+  // --changed-only with zero changed .md files reports 0 files checked.
+  it('--changed-only reports "0 files checked" when no .md files changed', () => {
+    const tmp = mkdtempSync(resolve(tmpdir(), 'lint-changed-empty-'));
+    execSync('git init -b main', { cwd: tmp });
+    execSync('git config user.email "test@test.com"', { cwd: tmp });
+    execSync('git config user.name "Test"', { cwd: tmp });
+
+    writeFileSync(resolve(tmp, 'base.md'), '# base\n');
+    execSync('git add -A && git commit -m "initial"', { cwd: tmp });
+
+    // Feature branch with no .md changes.
+    execSync('git checkout -b feature', { cwd: tmp });
+    writeFileSync(resolve(tmp, 'readme.txt'), 'text\n');
+    execSync('git add -A && git commit -m "add txt"', { cwd: tmp });
+
+    const { stdout, exitCode } = run(`lint --changed-only --base main`, tmp);
+    assert.ok(stdout.includes('0 files checked'), `expected "0 files checked" in: ${stdout}`);
+    assert.equal(exitCode, 0);
+  });
+
+  // --changed-only with bad base ref exits 2 (ChangedFilesError).
+  it('--changed-only exits 2 for non-existent base ref', () => {
+    const tmp = mkdtempSync(resolve(tmpdir(), 'lint-changed-badref-'));
+    execSync('git init -b main', { cwd: tmp });
+    execSync('git config user.email "test@test.com"', { cwd: tmp });
+    execSync('git config user.name "Test"', { cwd: tmp });
+
+    writeFileSync(resolve(tmp, 'base.md'), '# base\n');
+    execSync('git add -A && git commit -m "initial"', { cwd: tmp });
+
+    const { stderr, exitCode } = run(`lint --changed-only --base nonexistent`, tmp);
+    assert.equal(exitCode, 2, `expected exit 2, got ${exitCode}`);
+    assert.ok(stderr.includes('Failed to get changed files'), `expected error in stderr: ${stderr}`);
   });
 
   // AC-9: --ratchet prints stub message and exits 0.
@@ -83,9 +133,9 @@ describe('lint command — integration', () => {
   // AC-10: Ignore patterns filter files before extraction.
   it('filters files matching ignore patterns', () => {
     // Default config ignores **/README.md. The fixtures dir has README.md.
-    // With 9 .md files, we expect 8 after filtering.
+    // With 22 .md files, we expect 21 after filtering.
     const { stdout } = run(`lint ${FIXTURES}`);
-    assert.ok(stdout.includes('8 files checked'), `expected 8 files (README.md ignored): ${stdout}`);
+    assert.ok(stdout.includes('21 files checked'), `expected 21 files (README.md ignored): ${stdout}`);
   });
 
   // AC-11: Empty directory -> 0 files checked, exit 0.
