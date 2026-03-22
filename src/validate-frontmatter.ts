@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import spectralCore from '@stoplight/spectral-core';
 import spectralFunctions from '@stoplight/spectral-functions';
 import type { Config, ExtractResult, ValidationResult } from './types.js';
+import { resolveLevel } from './profiles.js';
 
 const { Spectral } = spectralCore;
 const { schema } = spectralFunctions;
@@ -293,19 +294,30 @@ function getRulesForFileType(fileType: string): Set<string> {
  *
  * For each ExtractResult:
  * - If it has pre-existing errors, converts them to ValidationResults (skips Spectral).
- * - Otherwise, runs the appropriate Spectral rules based on file type and level filter.
+ * - Otherwise, resolves the effective quality level per file and runs appropriate rules.
+ *
+ * The `cliLevel` parameter sets a floor: effectiveLevel = max(resolvedLevel, cliLevel).
+ * When no files declare `quality_level` and no directory overrides exist,
+ * behavior is identical to the previous global-level approach.
  *
  * @param results - Extracted frontmatter results to validate.
- * @param level - Maximum rule level to include (0 = Level 0 only, 1 = Level 0 + Level 1).
- * @param config - Optional config for model list, tool registry, and limits.
+ * @param cliLevel - CLI --level flag value (floor for effective level).
+ * @param config - Optional config for model list, tool registry, limits, levels, and skills_root.
  */
 export async function validateFrontmatter(
   results: ExtractResult[],
-  level: number,
-  config?: Pick<Config, 'models' | 'tools' | 'limits'>,
+  cliLevel: number,
+  config?: Pick<Config, 'models' | 'tools' | 'limits' | 'default_level' | 'levels' | 'skills_root'>,
 ): Promise<ValidationResult[]> {
   const validationResults: ValidationResult[] = [];
   const allRules = buildRules(config);
+
+  // Build profile config for resolveLevel — use defaults if not provided.
+  const profileConfig = {
+    default_level: config?.default_level ?? 0,
+    levels: config?.levels ?? {},
+    skills_root: config?.skills_root ?? '.',
+  };
 
   for (const result of results) {
     // AC-6: Pre-existing errors pass through, skip Spectral.
@@ -321,16 +333,39 @@ export async function validateFrontmatter(
       continue;
     }
 
+    // Resolve per-file quality level.
+    // resolveLevel returns:
+    //   -1  → out-of-range quality_level (warn, fall back to cliLevel)
+    //   -2  → no file/dir override, used default_level (cliLevel wins)
+    //   0-3 → explicit file or directory override
+    const resolvedLevel = resolveLevel(result.filePath, result.data, profileConfig);
+
+    let effectiveLevel: number;
+    if (resolvedLevel === -1) {
+      // Out-of-range quality_level — warn and use default.
+      const badValue = result.data['quality_level'];
+      process.stderr.write(
+        `warning: ${result.filePath}: quality_level ${badValue} is out of range (0-3), using default_level ${profileConfig.default_level}\n`,
+      );
+      effectiveLevel = Math.max(profileConfig.default_level, cliLevel);
+    } else if (resolvedLevel === -2) {
+      // No explicit file or directory override — cliLevel is the effective level.
+      // This preserves backward compatibility: when no files declare quality_level,
+      // the global --level flag behavior is unchanged.
+      effectiveLevel = cliLevel;
+    } else {
+      // Explicit file or directory level — apply max(resolved, cliLevel).
+      effectiveLevel = Math.max(resolvedLevel, cliLevel);
+    }
+
     // Determine which rules apply to this file type.
     const enabledRuleNames = getRulesForFileType(result.fileType);
 
-    // Build the filtered ruleset: only include rules matching file type + level.
-    // Spectral throws if you set a rule to 'off' that was never defined,
-    // so we simply omit non-applicable rules.
+    // Build the filtered ruleset: only include rules matching file type + effective level.
     const spectralRules: Record<string, unknown> = {};
     for (const [name, rule] of Object.entries(allRules)) {
       if (!enabledRuleNames.has(name)) continue;
-      if (rule.extensions['x-skill-lint-level'] > level) continue;
+      if (rule.extensions['x-skill-lint-level'] > effectiveLevel) continue;
       spectralRules[name] = {
         given: rule.given,
         severity: rule.severity,
@@ -352,6 +387,7 @@ export async function validateFrontmatter(
         rule: sr.code as string,
         severity: SEVERITY_MAP[sr.severity] ?? 'info',
         message: sr.message,
+        effectiveLevel,
       });
     }
   }
