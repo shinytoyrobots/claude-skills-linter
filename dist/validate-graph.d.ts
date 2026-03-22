@@ -18,6 +18,17 @@ export declare function extractRelativeRefs(bodyText: string): Array<{
     raw: string;
 }>;
 /**
+ * Extract bare subdirectory references from body text.
+ * Returns raw path strings (e.g., "reference/foo.md", "shared/helpers.md").
+ *
+ * These are paths that start with a known subdirectory prefix but have no
+ * `./` or `../` prefix and don't match the canonical REF_PATTERN (which only
+ * matches agents/, context/, commands/ prefixes).
+ */
+export declare function extractBareRefs(bodyText: string): Array<{
+    raw: string;
+}>;
+/**
  * Validate cross-file references, orphans, duplicates, cycles, and name collisions.
  *
  * This is the main graph validation entry point. It processes an array
