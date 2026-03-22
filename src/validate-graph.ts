@@ -80,6 +80,7 @@ function canonicalName(filePath: string, fileType: string): string {
     fileType === 'command' ? 'commands' :
     fileType === 'agent' || fileType === 'legacy-agent' ? 'agents' :
     fileType === 'context' ? 'context' :
+    fileType === 'skill' ? 'skills' :
     fileType; // readme, unknown — won't typically be referenced
   return `${typeDir}/${basename}`;
 }

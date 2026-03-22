@@ -73,7 +73,8 @@ function canonicalName(filePath, fileType) {
     const typeDir = fileType === 'command' ? 'commands' :
         fileType === 'agent' || fileType === 'legacy-agent' ? 'agents' :
             fileType === 'context' ? 'context' :
-                fileType; // readme, unknown — won't typically be referenced
+                fileType === 'skill' ? 'skills' :
+                    fileType; // readme, unknown — won't typically be referenced
     return `${typeDir}/${basename}`;
 }
 function buildCanonicalIndex(files) {

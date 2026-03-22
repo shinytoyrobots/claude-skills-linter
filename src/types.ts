@@ -12,6 +12,7 @@ export type FileType =
   | 'agent'
   | 'legacy-agent'
   | 'context'
+  | 'skill'
   | 'readme'
   | 'unknown';
 
