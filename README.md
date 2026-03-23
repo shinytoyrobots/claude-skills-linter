@@ -25,7 +25,9 @@ Caught in under two seconds. No LLM calls. Deterministic.
 | **Approach** | Deterministic CI — no LLM | LLM-powered deep analysis |
 | **Catches** | Broken refs, orphans, cycles, collisions, parse errors, size violations, quality regressions | Redundant content, output format waste, instruction bloat, model routing, architecture-level optimization |
 
-claude-skill-lint enforces the structural foundation. `/te-review` (included in [`skills/te-review.md`](skills/te-review.md)) goes deeper — scoring suites across architecture, efficiency, and instruction quality, then producing a prioritized optimization plan with estimated token savings per fix.
+claude-skill-lint enforces the structural foundation. `/te-review` (included in [`skills/te-review.md`](skills/te-review.md)) goes deeper — four-pass analysis across architecture, efficiency, and instruction quality, producing a scored assessment (0-24) with a prioritized optimization plan and estimated token savings per fix.
+
+We ran te-review against itself. It scored 20/24. The main finding: the skill didn't constrain its own output the way it tells others to. After adding "top 5 findings per category" and "each subagent returns top 10 findings only," estimated output token savings on large suite reviews dropped by ~50%. The tool practices what it preaches.
 
 Install the deep audit skill:
 
@@ -40,6 +42,15 @@ Then in any Claude Code session:
 /te-review audit my-skill           # Single skill deep dive
 /te-review compare old.md new.md    # Before/after token impact
 ```
+
+### What te-review checks
+
+Four sequential passes, each producing up to 5 findings per severity level:
+
+1. **Structural Audit** — CLAUDE.md bloat, unused tool declarations, reference depth, subagent model routing, file size
+2. **Redundancy Detection** — skill-context overlap, cross-skill duplication, CLAUDE.md-skill overlap. High-fanout context files are flagged as highest-ROI optimization targets.
+3. **Output Efficiency** — missing format constraints, missing conciseness directives, unbounded output sections, prose where structured would suffice. Output tokens cost 5x input — this pass often finds the biggest savings.
+4. **Instruction Quality** — motivational fluff, politeness tokens, filler phrases, default-behavior instructions, conflicting constraints, emphasis overuse
 
 ## What It Actually Found
 
@@ -138,7 +149,7 @@ These fields are supported across all file types (command, agent, skill):
 | `metadata` | `object` | Arbitrary key-value metadata for tooling and marketplace use |
 | `allowed-tools` | `array` or `string` | Tools the skill can use. Supports glob patterns like `mcp__*` and `Bash(*)` for broad matching, or specific tool names for fine-grained control |
 
-At Level 1: model enum validation, known tool verification, tool-to-body consistency, file size limits.
+At Level 1: model enum validation, known tool verification (including `Bash(python*)` pattern syntax), tool-to-body consistency, file size limits, `effort` value validation, skill name format.
 
 ### Manifest Validation (plugin format)
 
@@ -200,6 +211,8 @@ Detection priority: config override > multi-plugin > plugin > project-skills > l
 The `project-skills` format uses `.claude/skills/{name}/SKILL.md` — the same structure Claude Code uses for project-scoped skills. Each skill lives in its own directory under `.claude/skills/`.
 
 claude-skill-lint discovers skills in nested `.claude/skills/` directories automatically. In monorepo setups where multiple packages each have their own `.claude/skills/` directory, point the linter at the repo root and it finds them all.
+
+Hybrid repos work too. A repo with both `.claude/skills/` and legacy `commands/` directories — or a published plugin that also has project-level skills — gets everything linted in a single run. No configuration needed.
 
 ### Migration Note
 
