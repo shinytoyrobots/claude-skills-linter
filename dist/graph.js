@@ -39,9 +39,9 @@ export async function runGraph(options) {
         }
         return resolved;
     });
-    // (c) Extract all files, passing format for plugin discovery.
-    const isPluginFormat = format === 'plugin' || format === 'multi-plugin';
-    let results = await extractAll(patterns, config.ignore, isPluginFormat ? format : undefined);
+    // (c) Extract all files, passing format for structured format discovery.
+    const isStructuredFormat = format === 'plugin' || format === 'multi-plugin' || format === 'project-skills';
+    let results = await extractAll(patterns, config.ignore, isStructuredFormat ? format : undefined);
     // (d) Apply ignore patterns from config.
     if (config.ignore.length > 0) {
         results = results.filter((r) => {

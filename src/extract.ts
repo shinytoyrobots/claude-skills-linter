@@ -112,11 +112,15 @@ function multiPluginPatterns(root: string): string[] {
 /**
  * Build glob patterns for project-skills format discovery.
  *
- * Project-skills: .claude/skills/{name}/**\/*.md (all markdown in skill dirs)
+ * Project-skills: **\/.claude/skills/{name}/**\/*.md (all markdown in skill dirs)
+ * The ** prefix matches zero or more path segments, so this discovers BOTH
+ * root-level .claude/skills/ AND nested monorepo .claude/skills/ directories
+ * (e.g. packages/frontend/.claude/skills/). node_modules exclusion in the
+ * glob ignore list prevents discovery there.
  */
 function projectSkillsPatterns(root: string): string[] {
   return [
-    `${root}/.claude/skills/**/*.md`,
+    `${root}/**/.claude/skills/**/*.md`,
   ];
 }
 

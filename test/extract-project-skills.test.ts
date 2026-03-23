@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
-import { extractAll } from '../src/extract.js';
+import { extractAll, extractFile } from '../src/extract.js';
 import { classifyFile } from '../src/classify.js';
 
 const fixtures = resolve(import.meta.dirname, 'fixtures');
@@ -255,6 +255,205 @@ describe('extractAll — project-skills with no matching files', () => {
 
 describe('extractAll — project-skills deduplication (story-032)', () => {
   it('does not produce duplicate entries when patterns overlap', async () => {
+    const results = await extractAll(
+      [`${projectSkillsRoot}/**/*.md`],
+      [],
+      'project-skills',
+    );
+
+    const paths = results.map((r) => r.filePath);
+    const uniquePaths = [...new Set(paths)];
+    assert.equal(paths.length, uniquePaths.length, 'no duplicate file paths');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// story-033 AC-1: nested .claude/skills/ discovery in monorepo
+// ---------------------------------------------------------------------------
+
+describe('extractAll — monorepo nested .claude/skills/ discovery (story-033)', () => {
+  it('AC-1: discovers nested packages/frontend/.claude/skills/lint-ui/SKILL.md', async () => {
+    const results = await extractAll(
+      [`${projectSkillsRoot}/**/*.md`],
+      [],
+      'project-skills',
+    );
+
+    const paths = results.map((r) => r.filePath);
+
+    assert.ok(
+      paths.some((p) => p.includes('packages/frontend/.claude/skills/lint-ui/SKILL.md')),
+      'should discover nested packages/frontend/.claude/skills/lint-ui/SKILL.md',
+    );
+  });
+
+  it('AC-1: nested SKILL.md classified as skill', async () => {
+    const results = await extractAll(
+      [`${projectSkillsRoot}/**/*.md`],
+      [],
+      'project-skills',
+    );
+
+    const nestedSkill = results.find((r) =>
+      r.filePath.includes('packages/frontend/.claude/skills/lint-ui/SKILL.md'),
+    );
+    assert.ok(nestedSkill, 'should find nested SKILL.md');
+    assert.equal(nestedSkill!.fileType, 'skill');
+  });
+
+  it('AC-1: nested supporting files (reference/) discovered and classified', async () => {
+    const results = await extractAll(
+      [`${projectSkillsRoot}/**/*.md`],
+      [],
+      'project-skills',
+    );
+
+    const refFile = results.find((r) =>
+      r.filePath.includes('packages/frontend/.claude/skills/lint-ui/reference/a11y-rules.md'),
+    );
+    assert.ok(refFile, 'should discover nested reference/a11y-rules.md');
+    assert.equal(refFile!.fileType, 'context');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// story-033 AC-2: multiple nested .claude/skills/ directories
+// ---------------------------------------------------------------------------
+
+describe('extractAll — multiple nested .claude/skills/ dirs (story-033)', () => {
+  it('AC-2: discovers skills from multiple nested .claude/skills/ directories', async () => {
+    const results = await extractAll(
+      [`${projectSkillsRoot}/**/*.md`],
+      [],
+      'project-skills',
+    );
+
+    const paths = results.map((r) => r.filePath);
+
+    // Root-level skills still discovered
+    assert.ok(
+      paths.some((p) => p.includes('.claude/skills/deploy/SKILL.md') && !p.includes('packages/')),
+      'should still discover root-level .claude/skills/deploy/SKILL.md',
+    );
+
+    // Frontend nested skills
+    assert.ok(
+      paths.some((p) => p.includes('packages/frontend/.claude/skills/lint-ui/SKILL.md')),
+      'should discover packages/frontend/.claude/skills/lint-ui/SKILL.md',
+    );
+
+    // Backend nested skills
+    assert.ok(
+      paths.some((p) => p.includes('packages/backend/.claude/skills/api-gen/SKILL.md')),
+      'should discover packages/backend/.claude/skills/api-gen/SKILL.md',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// story-033 AC-3: node_modules exclusion
+// ---------------------------------------------------------------------------
+
+describe('extractAll — node_modules exclusion (story-033)', () => {
+  it('AC-3: .claude/skills/ inside node_modules/ is NOT discovered', async () => {
+    const results = await extractAll(
+      [`${projectSkillsRoot}/**/*.md`],
+      [],
+      'project-skills',
+    );
+
+    const paths = results.map((r) => r.filePath);
+
+    assert.ok(
+      !paths.some((p) => p.includes('node_modules')),
+      'should NOT discover any files in node_modules/',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// story-033 AC-4: nested skill references resolve relative to their SKILL.md
+// ---------------------------------------------------------------------------
+
+describe('extractAll — nested skill reference resolution (story-033)', () => {
+  it('AC-4: nested SKILL.md body contains relative references to its supporting files', async () => {
+    const results = await extractAll(
+      [`${projectSkillsRoot}/**/*.md`],
+      [],
+      'project-skills',
+    );
+
+    const lintUiSkill = results.find((r) =>
+      r.filePath.includes('packages/frontend/.claude/skills/lint-ui/SKILL.md'),
+    );
+    assert.ok(lintUiSkill, 'should find lint-ui SKILL.md');
+
+    const body = lintUiSkill!.data['___body_text'] as string;
+    assert.ok(
+      body.includes('reference/a11y-rules.md'),
+      'body should reference reference/a11y-rules.md',
+    );
+  });
+
+  it('AC-4: nested reference file ___file_path is absolute and correct', async () => {
+    const results = await extractAll(
+      [`${projectSkillsRoot}/**/*.md`],
+      [],
+      'project-skills',
+    );
+
+    const refFile = results.find((r) =>
+      r.filePath.includes('packages/frontend/.claude/skills/lint-ui/reference/a11y-rules.md'),
+    );
+    assert.ok(refFile, 'should find reference file');
+
+    // The ___file_path should be an absolute path
+    const filePath = refFile!.data['___file_path'] as string;
+    assert.ok(filePath.startsWith('/'), 'file path should be absolute');
+    assert.ok(
+      filePath.includes('packages/frontend/.claude/skills/lint-ui/reference/a11y-rules.md'),
+      'file path should contain full nested path',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// story-033 AC-5: --changed-only works with nested paths
+// ---------------------------------------------------------------------------
+
+describe('extractFile — nested .claude/skills/ paths (story-033)', () => {
+  it('AC-5: extractFile works with absolute nested .claude/skills/ path', () => {
+    // --changed-only calls extractFile directly with absolute paths from git diff.
+    // Verify extractFile handles nested .claude/skills/ paths correctly.
+    const nestedPath = resolve(
+      projectSkillsRoot,
+      'packages/frontend/.claude/skills/lint-ui/SKILL.md',
+    );
+
+    const result = extractFile(nestedPath);
+    assert.equal(result.fileType, 'skill');
+    assert.equal(result.filePath, nestedPath);
+    assert.equal(result.errors.length, 0, 'should have no parse errors');
+  });
+
+  it('AC-5: extractFile classifies nested reference files correctly', () => {
+    const refPath = resolve(
+      projectSkillsRoot,
+      'packages/frontend/.claude/skills/lint-ui/reference/a11y-rules.md',
+    );
+
+    const result = extractFile(refPath);
+    assert.equal(result.fileType, 'context');
+    assert.equal(result.filePath, refPath);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// story-033: deduplication with nested discovery
+// ---------------------------------------------------------------------------
+
+describe('extractAll — deduplication with nested skills (story-033)', () => {
+  it('no duplicate entries with nested .claude/skills/ discovery', async () => {
     const results = await extractAll(
       [`${projectSkillsRoot}/**/*.md`],
       [],

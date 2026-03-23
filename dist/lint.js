@@ -107,8 +107,8 @@ export async function runLint(options) {
         return resolved;
     });
     // (e) Call extractAll with patterns, passing ignore patterns and format.
-    const isPluginFormat = format === 'plugin' || format === 'multi-plugin';
-    let results = await extractAll(patterns, config.ignore, isPluginFormat ? format : undefined);
+    const isStructuredFormat = format === 'plugin' || format === 'multi-plugin' || format === 'project-skills';
+    let results = await extractAll(patterns, config.ignore, isStructuredFormat ? format : undefined);
     // (f) Apply ignore patterns from config to filter files (AC-10).
     if (config.ignore.length > 0) {
         results = results.filter((r) => {
@@ -133,6 +133,7 @@ export async function runLint(options) {
     // (h) Validate frontmatter.
     const validationResults = await validateFrontmatter(results, options.level, config);
     // (i) Validate manifests for plugin/multi-plugin formats.
+    const isPluginFormat = format === 'plugin' || format === 'multi-plugin';
     if (isPluginFormat) {
         const manifestResults = validateManifest(rootDir, format, config);
         validationResults.push(...manifestResults);
