@@ -113,10 +113,25 @@ function hasSkillFiles(rootDir) {
     return entries.some((name) => existsSync(join(skillsDir, name, 'SKILL.md')));
 }
 /**
- * Check if legacy command directories exist at repo root.
+ * Check if legacy command directories exist at repo root,
+ * or nested one level deep inside suite directories (monorepo layout).
  */
 function hasLegacyDirs(rootDir) {
     const legacyDirs = ['commands', 'agents', 'context'];
-    return legacyDirs.some((dir) => existsSync(join(rootDir, dir)));
+    // Check root-level legacy dirs
+    if (legacyDirs.some((dir) => existsSync(join(rootDir, dir)))) {
+        return true;
+    }
+    // Check for suite-monorepo pattern: {suite}/commands|agents|context/
+    let entries;
+    try {
+        entries = readdirSync(rootDir, { withFileTypes: true })
+            .filter((e) => e.isDirectory() && !e.name.startsWith('.') && e.name !== 'node_modules')
+            .map((e) => e.name);
+    }
+    catch {
+        return false;
+    }
+    return entries.some((suite) => legacyDirs.some((dir) => existsSync(join(rootDir, suite, dir))));
 }
 //# sourceMappingURL=detect-format.js.map
