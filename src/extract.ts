@@ -1,6 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import matter from 'gray-matter';
 import { glob } from 'glob';
+import { join } from 'node:path';
 import { classifyFile } from './classify.js';
 import { type ExtractResult, type ParseError, type RepoFormat } from './types.js';
 
@@ -109,6 +110,30 @@ function multiPluginPatterns(root: string): string[] {
 }
 
 /**
+ * Build glob patterns for project-skills format discovery.
+ *
+ * Project-skills: .claude/skills/{name}/**\/*.md (all markdown in skill dirs)
+ */
+function projectSkillsPatterns(root: string): string[] {
+  return [
+    `${root}/.claude/skills/**/*.md`,
+  ];
+}
+
+/**
+ * Build glob patterns for legacy directory discovery.
+ *
+ * Legacy: commands/**\/*.md, agents/**\/*.md, context/**\/*.md
+ */
+function legacyPatterns(root: string): string[] {
+  return [
+    `${root}/commands/**/*.md`,
+    `${root}/agents/**/*.md`,
+    `${root}/context/**/*.md`,
+  ];
+}
+
+/**
  * Extract frontmatter from all markdown files matching the given glob
  * patterns. Returns one ExtractResult per file.
  *
@@ -124,16 +149,35 @@ export async function extractAll(
 ): Promise<ExtractResult[]> {
   let effectivePatterns: string[];
 
-  if (format === 'plugin' || format === 'multi-plugin') {
-    // For plugin formats, the first pattern is expected to be a glob
+  if (format === 'plugin' || format === 'multi-plugin' || format === 'project-skills') {
+    // For structured formats, the first pattern is expected to be a glob
     // rooted at the skills root. Extract the root directory from it.
     // Convention: patterns[0] is something like "/path/to/root/**/*.md"
     // We take the root from patterns[0] by stripping the glob suffix.
     const root = extractRoot(patterns);
 
-    effectivePatterns = format === 'plugin'
-      ? pluginPatterns(root)
-      : multiPluginPatterns(root);
+    if (format === 'plugin') {
+      effectivePatterns = pluginPatterns(root);
+      // AC-3b (story-032): plugin format + .claude/skills/ → also extract project-skills
+      if (existsSync(join(root, '.claude', 'skills'))) {
+        effectivePatterns.push(...projectSkillsPatterns(root));
+      }
+    } else if (format === 'multi-plugin') {
+      effectivePatterns = multiPluginPatterns(root);
+      // AC-3b (story-032): multi-plugin format + .claude/skills/ → also extract project-skills
+      if (existsSync(join(root, '.claude', 'skills'))) {
+        effectivePatterns.push(...projectSkillsPatterns(root));
+      }
+    } else {
+      // project-skills format
+      effectivePatterns = projectSkillsPatterns(root);
+      // AC-3 (story-032): project-skills + legacy dirs → extract from BOTH
+      if (existsSync(join(root, 'commands')) ||
+          existsSync(join(root, 'agents')) ||
+          existsSync(join(root, 'context'))) {
+        effectivePatterns.push(...legacyPatterns(root));
+      }
+    }
   } else {
     effectivePatterns = patterns;
   }

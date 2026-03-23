@@ -276,9 +276,9 @@ describe('AC-9: plugin fixture known error profile', () => {
 // AC-10: legacy-format regression test
 // ---------------------------------------------------------------------------
 describe('AC-10: legacy-format regression', () => {
-  it('full fixtures dir produces expected results (48 files, 3 errors)', () => {
+  it('full fixtures dir produces expected results (53 files, 3 errors)', () => {
     const { stdout, exitCode } = run(`lint ${FIXTURES}`);
-    assert.ok(stdout.includes('48 files checked'), `expected "48 files checked" in: ${stdout}`);
+    assert.ok(stdout.includes('53 files checked'), `expected "53 files checked" in: ${stdout}`);
     assert.ok(stdout.includes('3 errors'), `expected "3 errors" in: ${stdout}`);
     assert.equal(exitCode, 1);
   });
