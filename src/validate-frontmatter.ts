@@ -69,6 +69,7 @@ const DEFAULT_CONFIG: Pick<Config, 'models' | 'tools' | 'limits'> = {
  * - tools-not-in-body: Checks at least one allowed tool appears in body
  * - file-size-limit: Checks ___file_size <= config.limits.max_file_size
  * - skill-name-format: Checks skill name matches kebab-case pattern
+ * - effort-invalid: Checks effort value is one of [low, medium, high, max]
  */
 function buildRules(config?: Pick<Config, 'models' | 'tools' | 'limits'>): Record<string, LevelRule> {
   const cfg = config ?? DEFAULT_CONFIG;
@@ -137,6 +138,18 @@ function buildRules(config?: Pick<Config, 'models' | 'tools' | 'limits'>): Recor
     const limit = cfg.limits.max_file_size;
     if (targetVal > limit) {
       return [{ message: `file size ${targetVal} bytes exceeds limit of ${limit} bytes` }];
+    }
+    return [];
+  };
+
+  /** Custom inline function: checks effort is one of [low, medium, high, max] when present. */
+  const effortInvalidFn = (targetVal: unknown): Array<{ message: string }> => {
+    if (targetVal === undefined || targetVal === null) {
+      return [];
+    }
+    const allowed = ['low', 'medium', 'high', 'max'];
+    if (!allowed.includes(String(targetVal))) {
+      return [{ message: `effort "${targetVal}" is not valid; expected one of: ${allowed.join(', ')}` }];
     }
     return [];
   };
@@ -257,6 +270,16 @@ function buildRules(config?: Pick<Config, 'models' | 'tools' | 'limits'>): Recor
       },
       extensions: level1Extensions,
     },
+
+    'effort-invalid': {
+      given: '$.effort',
+      severity: 1,
+      message: '{{error}}',
+      then: {
+        function: effortInvalidFn,
+      },
+      extensions: level1Extensions,
+    },
   };
 }
 
@@ -272,17 +295,17 @@ function getRulesForFileType(fileType: string): Set<string> {
     case 'command':
       return new Set([
         'required-fields-command', 'non-empty-body',
-        'model-enum', 'unknown-tool', 'tools-not-in-body', 'file-size-limit',
+        'model-enum', 'unknown-tool', 'tools-not-in-body', 'file-size-limit', 'effort-invalid',
       ]);
     case 'agent':
       return new Set([
         'required-fields-agent', 'non-empty-body',
-        'model-enum', 'file-size-limit',
+        'model-enum', 'file-size-limit', 'effort-invalid',
       ]);
     case 'skill':
       return new Set([
         'required-fields-skill', 'non-empty-body',
-        'skill-name-format', 'model-enum', 'unknown-tool', 'tools-not-in-body', 'file-size-limit',
+        'skill-name-format', 'model-enum', 'unknown-tool', 'tools-not-in-body', 'file-size-limit', 'effort-invalid',
       ]);
     default:
       return new Set(['non-empty-body']);

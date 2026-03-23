@@ -37,6 +37,30 @@
       "minimum": 0,
       "maximum": 3,
       "description": "Quality enforcement level for this file (0-3)"
+    },
+    "context": {
+      "type": "string",
+      "description": "Execution context for the skill (e.g. fork)"
+    },
+    "agent": {
+      "type": "string",
+      "description": "Agent mode or name to use when running this skill"
+    },
+    "effort": {
+      "type": "string",
+      "description": "Reasoning effort level for the skill"
+    },
+    "hooks": {
+      "type": "object",
+      "description": "Lifecycle hooks for the skill"
+    },
+    "compatibility": {
+      "type": "string",
+      "description": "Compatibility requirements or notes"
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Arbitrary metadata for the skill"
     }
   },
   "additionalProperties": true
