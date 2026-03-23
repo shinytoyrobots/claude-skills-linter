@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 
 const CLI = resolve(import.meta.dirname, '..', 'bin', 'cli.js');
@@ -170,5 +170,29 @@ describe('lint command — integration', () => {
     assert.ok(Array.isArray(parsed), 'should output a JSON array');
     assert.equal(parsed.length, 0, 'should have zero results for valid file');
     assert.equal(exitCode, 0);
+  });
+
+  // Task 4: --format github produces ::error file= annotations for files with errors.
+  it('--format github outputs GitHub Actions annotations for errors', () => {
+    // Run on the fixtures dir which has known errors (invalid-yaml.md, empty-body.md, etc.)
+    const { stdout, exitCode } = run(`lint --format github ${FIXTURES}`);
+    assert.ok(stdout.includes('::error file='), `expected "::error file=" annotation in: ${stdout}`);
+    assert.equal(exitCode, 1, 'should exit 1 when errors exist');
+  });
+
+  // Task 5: --strict with a warning-producing fixture exits 1.
+  it('--strict treats warnings as errors and exits 1', () => {
+    const tmp = mkdtempSync(resolve(tmpdir(), 'lint-strict-warn-'));
+    // model: gpt-4 triggers the level-1 model-enum rule (warning by default).
+    // model-enum only runs for 'command' fileType — so the file must be in a commands/ subdir.
+    // With --strict, warnings are promoted to errors → exit 1.
+    const commandsDir = resolve(tmp, 'commands');
+    mkdirSync(commandsDir, { recursive: true });
+    writeFileSync(
+      resolve(commandsDir, 'warn.md'),
+      '---\ndescription: A command with an invalid model\nmodel: gpt-4\n---\n\nBody text here.\n',
+    );
+    const { exitCode, stdout } = run(`lint --strict --level 1 ${tmp}`);
+    assert.equal(exitCode, 1, `expected exit 1 with --strict and warnings, got ${exitCode}. stdout: ${stdout}`);
   });
 });

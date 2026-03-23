@@ -14,12 +14,7 @@ export interface LintOptions {
 }
 /**
  * Run the lint pipeline and return an exit code.
- *
- * Exit codes:
- *   0 — no errors (or only warnings without --strict)
- *   1 — validation errors found (or warnings with --strict)
- *
- * ConfigError is NOT caught here — the caller (cli.ts) handles it for exit code 2.
+ * Exit codes: 0 = clean, 1 = errors (or warnings with --strict), 2 = config/git error (caller).
  */
 export declare function runLint(options: LintOptions): Promise<number>;
 //# sourceMappingURL=lint.d.ts.map
