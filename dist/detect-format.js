@@ -1,11 +1,11 @@
 /**
  * Auto-detect repository format based on filesystem signals.
- * Determines whether a repo uses legacy-commands, plugin, or multi-plugin format.
+ * Determines whether a repo uses legacy-commands, plugin, multi-plugin, or project-skills format.
  */
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ConfigError } from './config.js';
-const VALID_FORMATS = ['legacy-commands', 'plugin', 'multi-plugin'];
+const VALID_FORMATS = ['legacy-commands', 'plugin', 'multi-plugin', 'project-skills'];
 /**
  * Detect the repository format for skill file organization.
  *
@@ -13,8 +13,9 @@ const VALID_FORMATS = ['legacy-commands', 'plugin', 'multi-plugin'];
  * 1. Config override (format field in .skill-lint.yaml)
  * 2. multi-plugin: marketplace.json + plugins with plugin.json
  * 3. plugin: marketplace.json + skills/SKILL.md files
- * 4. legacy-commands: commands/, agents/, or context/ directories
- * 5. Fallback: legacy-commands with stderr warning
+ * 4. project-skills: .claude/skills/{name}/SKILL.md
+ * 5. legacy-commands: commands/, agents/, or context/ directories
+ * 6. Fallback: legacy-commands with stderr warning
  */
 export function detectFormat(rootDir, config) {
     // AC-4 / AC-9: Config override takes precedence
@@ -49,6 +50,10 @@ export function detectFormat(rootDir, config) {
             }
         }
     }
+    // project-skills: .claude/skills/*/SKILL.md (priority 3, after plugin formats)
+    if (hasProjectSkills(rootDir)) {
+        return 'project-skills';
+    }
     // AC-3 / AC-7: Legacy commands detection (only when plugin detection didn't match)
     if (hasLegacyDirs(rootDir)) {
         return 'legacy-commands';
@@ -74,6 +79,22 @@ function hasMultiPlugin(rootDir) {
         return false;
     }
     return entries.some((name) => existsSync(join(pluginsDir, name, '.claude-plugin', 'plugin.json')));
+}
+/** Check if any subdirectory of .claude/skills/ contains a SKILL.md file. */
+function hasProjectSkills(rootDir) {
+    const skillsDir = join(rootDir, '.claude', 'skills');
+    if (!existsSync(skillsDir))
+        return false;
+    let entries;
+    try {
+        entries = readdirSync(skillsDir, { withFileTypes: true })
+            .filter((e) => e.isDirectory())
+            .map((e) => e.name);
+    }
+    catch {
+        return false;
+    }
+    return entries.some((name) => existsSync(join(skillsDir, name, 'SKILL.md')));
 }
 /** Check if any subdirectory of skills/ contains a SKILL.md file. */
 function hasSkillFiles(rootDir) {

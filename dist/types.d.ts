@@ -3,7 +3,7 @@
  * Canonical home for all types used across stories.
  */
 /** Detected repository format for skill file organization. */
-export type RepoFormat = 'legacy-commands' | 'plugin' | 'multi-plugin';
+export type RepoFormat = 'legacy-commands' | 'plugin' | 'multi-plugin' | 'project-skills';
 /** Classification of a skill file based on its path. */
 export type FileType = 'command' | 'agent' | 'legacy-agent' | 'context' | 'skill' | 'readme' | 'unknown';
 /** An error encountered during frontmatter parsing. */
