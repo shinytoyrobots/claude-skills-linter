@@ -7,6 +7,8 @@ import type { Config } from './types.js';
 export declare class ConfigError extends Error {
     constructor(message: string);
 }
+/** Returns a fresh copy of the default configuration. */
+export declare function getDefaults(): Config;
 /**
  * Load configuration from .skill-lint.yaml in the given root directory.
  * Returns defaults if the file is missing or empty.
