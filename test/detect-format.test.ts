@@ -168,6 +168,48 @@ describe('detectFormat', () => {
     });
   });
 
+  describe('AC-3b: legacy-commands suite-monorepo pattern', () => {
+    it('detects legacy-commands when suite subdirs contain commands/', () => {
+      createDirs(tmp, ['personal-styling/commands']);
+      const result = detectFormat(tmp, makeConfig());
+      assert.equal(result, 'legacy-commands');
+      assert.equal(stderrOutput, '');
+    });
+
+    it('detects legacy-commands when suite subdirs contain agents/', () => {
+      createDirs(tmp, ['delivery-team/agents']);
+      const result = detectFormat(tmp, makeConfig());
+      assert.equal(result, 'legacy-commands');
+      assert.equal(stderrOutput, '');
+    });
+
+    it('detects legacy-commands when suite subdirs contain context/', () => {
+      createDirs(tmp, ['cpo-skills/context']);
+      const result = detectFormat(tmp, makeConfig());
+      assert.equal(result, 'legacy-commands');
+      assert.equal(stderrOutput, '');
+    });
+
+    it('detects legacy-commands with multiple suites', () => {
+      createDirs(tmp, [
+        'personal-styling/commands',
+        'delivery-team/commands',
+        'delivery-team/agents',
+        'cpo-skills/context',
+      ]);
+      const result = detectFormat(tmp, makeConfig());
+      assert.equal(result, 'legacy-commands');
+      assert.equal(stderrOutput, '');
+    });
+
+    it('ignores dotfile and node_modules directories in suite scan', () => {
+      createDirs(tmp, ['.github/commands', 'node_modules/commands']);
+      const result = detectFormat(tmp, makeConfig());
+      assert.equal(result, 'legacy-commands');
+      assert.ok(stderrOutput.includes('No recognized repo format signals found'));
+    });
+  });
+
   // --- AC-4: config override ---
 
   describe('AC-4: config override', () => {
