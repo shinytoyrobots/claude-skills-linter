@@ -50,7 +50,7 @@ Build a dependency map:
 
 Run the four lint passes at the suite level, then produce the Strategic Assessment.
 
-Use the Agent tool to launch parallel subagents (model: haiku) for structural analysis — one for skills inventory, one for context file analysis, one for CLAUDE.md analysis. Merge their findings.
+Use the Agent tool to launch parallel subagents (model: haiku) for structural analysis — one for skills inventory, one for context file analysis, one for CLAUDE.md analysis. Each subagent returns its top 10 findings only — not full analysis. Merge their findings.
 
 ## Mode: Compare
 
@@ -63,7 +63,7 @@ When `$ARGUMENTS` starts with `compare`:
 
 ## Lint Passes
 
-Run these four passes sequentially. Each pass produces findings categorized as Critical (must fix), Recommendation (should fix), or Observation (consider).
+Run these four passes sequentially. Each pass produces findings categorized as Critical (must fix), Recommendation (should fix), or Observation (consider). Limit to top 5 findings per category per pass. Each finding: 1-2 sentences + file:line reference.
 
 ### Pass 1 — Structural Audit
 
@@ -115,26 +115,11 @@ Check for token-wasting instruction patterns:
 
 Score each domain 0-8:
 
-### Architecture (Pass 1) — 0-8
-| Score | Criteria |
-|-------|----------|
-| 0-2 | CLAUDE.md bloated, no model routing, unused MCP tools, deep references |
-| 3-5 | Some issues — CLAUDE.md moderate, partial model routing, minor structural waste |
-| 6-8 | Lean CLAUDE.md, proper model routing, minimal tool declarations, flat references |
-
-### Efficiency (Passes 2-3) — 0-8
-| Score | Criteria |
-|-------|----------|
-| 0-2 | Significant redundancy, no output format constraints, verbose subagent returns |
-| 3-5 | Some redundancy, partial output constraints, moderate verbosity |
-| 6-8 | Minimal redundancy, structured output everywhere, concise subagent contracts |
-
-### Quality (Pass 4) — 0-8
-| Score | Criteria |
-|-------|----------|
-| 0-2 | Frequent fluff, politeness tokens, ambiguity, conflicting constraints |
-| 3-5 | Occasional quality issues, some default-behavior instructions |
-| 6-8 | Clean, precise instructions; every line is load-bearing |
+| Domain | 0-2 | 3-5 | 6-8 |
+|--------|-----|-----|-----|
+| **Architecture** (Pass 1) | CLAUDE.md bloated, no model routing, unused tools, deep refs | Moderate CLAUDE.md, partial routing, minor waste | Lean, proper routing, minimal declarations, flat refs |
+| **Efficiency** (Passes 2-3) | Significant redundancy, no output constraints, verbose subagents | Some redundancy, partial constraints | Minimal redundancy, structured output, concise contracts |
+| **Quality** (Pass 4) | Frequent fluff, politeness, ambiguity, conflicts | Occasional quality issues, default-behavior instructions | Clean, precise; every line load-bearing |
 
 **Total: 0-24.** Interpretation:
 - 0-8: Significant optimization opportunity
