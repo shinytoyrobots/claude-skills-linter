@@ -1,9 +1,10 @@
 {
-  "name": "skill-lint",
+  "name": "claude-skill-lint",
   "version": "0.2.1",
   "description": "A CLI tool that validates Claude Code skill files for structural correctness",
   "type": "module",
   "bin": {
+    "claude-skill-lint": "bin/cli.js",
     "skill-lint": "bin/cli.js"
   },
   "files": [

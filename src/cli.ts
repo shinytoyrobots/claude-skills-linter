@@ -7,7 +7,7 @@ import { ConfigError } from './config.js';
 import { ChangedFilesError } from './changed-files.js';
 
 const cli = yargs(hideBin(process.argv))
-  .scriptName('skill-lint')
+  .scriptName('claude-skill-lint')
   .usage('$0 <command> [options]')
   .command(
     'lint [paths..]',

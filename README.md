@@ -1,4 +1,4 @@
-# skill-lint
+# claude-skill-lint
 
 Structural validation and token-efficiency tooling for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skills. Catches the bugs that Claude tolerates but your users pay for.
 
@@ -6,7 +6,7 @@ Structural validation and token-efficiency tooling for [Claude Code](https://doc
 
 Claude Code skills load into the context window on every invocation. When a skill references a context file that doesn't exist, Claude doesn't throw an error. It hallucinates the missing context and keeps going. When two skills resolve to the same install path, one silently overwrites the other. When a context file is loaded but nothing references it, you're burning tokens for nothing.
 
-These aren't hypothetical failure modes. They're what we found running skill-lint against a real 139-file production suite:
+These aren't hypothetical failure modes. They're what we found running claude-skill-lint against a real 139-file production suite:
 
 - **32 broken references.** 23 skills referenced a context file that's generated at setup time — in the shareable repo, before setup runs, those skills have no context at all. 9 more referenced a file that had been renamed months earlier. Every one of those skills was silently degraded.
 - **11 orphaned files.** Context and agent files loaded into the window but referenced by zero skills. Dead weight on every invocation.
@@ -18,19 +18,19 @@ Caught in under two seconds. No LLM calls. Deterministic.
 
 ## Two Layers
 
-| | `skill-lint` | `/te-review` |
+| | `claude-skill-lint` | `/te-review` |
 |-|-------------|-------------|
 | **What** | Structural validation | Token efficiency audit |
 | **Speed** | <2s, every PR | ~60s, on demand |
 | **Approach** | Deterministic CI — no LLM | LLM-powered deep analysis |
 | **Catches** | Broken refs, orphans, cycles, collisions, parse errors, size violations, quality regressions | Redundant content, output format waste, instruction bloat, model routing, architecture-level optimization |
 
-skill-lint enforces the structural foundation. `/te-review` (included in [`skills/te-review.md`](skills/te-review.md)) goes deeper — scoring suites across architecture, efficiency, and instruction quality, then producing a prioritized optimization plan with estimated token savings per fix.
+claude-skill-lint enforces the structural foundation. `/te-review` (included in [`skills/te-review.md`](skills/te-review.md)) goes deeper — scoring suites across architecture, efficiency, and instruction quality, then producing a prioritized optimization plan with estimated token savings per fix.
 
 Install the deep audit skill:
 
 ```bash
-cp node_modules/skill-lint/skills/te-review.md ~/.claude/commands/te-review.md
+cp node_modules/claude-skill-lint/skills/te-review.md ~/.claude/commands/te-review.md
 ```
 
 Then in any Claude Code session:
@@ -46,7 +46,7 @@ Then in any Claude Code session:
 ### Against a 139-file shared skill suite
 
 ```
-$ skill-lint graph .
+$ claude-skill-lint graph .
 ✖ 43 errors and 11 warnings in 54 files (139 files checked)
 ```
 
@@ -55,7 +55,7 @@ The headline: `inv-output-conventions.md` was renamed to `inv-output-patterns.md
 ### Against Anthropic's official skills repo
 
 ```
-$ skill-lint graph ~/Development/anthropic-skills/
+$ claude-skill-lint graph ~/Development/anthropic-skills/
 ```
 
 Name-collision findings in the `claude-api` skill — five language-specific `claude-api.md` files (PHP, Java, Ruby, Go, C#) all resolve to the same canonical name. True findings from Anthropic's own reference implementation. Orphaned theme files in `theme-factory` (loaded dynamically, not via static references). Legitimate structural observations, not false positives.
@@ -71,13 +71,13 @@ The 4 YAML parse errors, on the other hand, are genuinely broken. The frontmatte
 ## Installation
 
 ```bash
-npm install -g skill-lint
+npm install -g claude-skill-lint
 ```
 
 Or directly:
 
 ```bash
-npx skill-lint lint .
+npx claude-skill-lint lint .
 ```
 
 Requires Node.js 20+.
@@ -85,9 +85,9 @@ Requires Node.js 20+.
 ## Quick Start
 
 ```bash
-skill-lint init           # Auto-detect format, generate config
-skill-lint graph .        # Cross-file references — the high-value bugs
-skill-lint lint .         # Frontmatter structure
+claude-skill-lint init           # Auto-detect format, generate config
+claude-skill-lint graph .        # Cross-file references — the high-value bugs
+claude-skill-lint lint .         # Frontmatter structure
 ```
 
 ## What It Checks
@@ -153,7 +153,7 @@ Effective level: `max(file declaration, directory default, --level flag)`. The h
 ### Ratchet
 
 ```bash
-skill-lint lint . --ratchet --base origin/main
+claude-skill-lint lint . --ratchet --base origin/main
 ```
 
 Compares each file's `quality_level` against the base branch. If any level decreased, the build fails. Quality improvements become permanent. That's the point.
@@ -170,32 +170,32 @@ Auto-detected:
 
 ## Commands
 
-### `skill-lint graph [paths...]`
+### `claude-skill-lint graph [paths...]`
 
 ```bash
-skill-lint graph .                    # Full graph analysis
-skill-lint graph . --format json      # JSON output
-skill-lint graph . --format github    # GitHub annotations
-skill-lint graph . --strict           # Orphan warnings become errors
+claude-skill-lint graph .                    # Full graph analysis
+claude-skill-lint graph . --format json      # JSON output
+claude-skill-lint graph . --format github    # GitHub annotations
+claude-skill-lint graph . --strict           # Orphan warnings become errors
 ```
 
-### `skill-lint lint [paths...]`
+### `claude-skill-lint lint [paths...]`
 
 ```bash
-skill-lint lint .                                    # Lint everything
-skill-lint lint . --level 1                          # Enforce Level 1
-skill-lint lint . --strict                           # Warnings become errors
-skill-lint lint . --ratchet                          # Prevent quality regression
-skill-lint lint . --changed-only --base origin/main  # Only changed files
-skill-lint lint . --format json                      # JSON for tooling
-skill-lint lint . --format github                    # GitHub Actions annotations
+claude-skill-lint lint .                                    # Lint everything
+claude-skill-lint lint . --level 1                          # Enforce Level 1
+claude-skill-lint lint . --strict                           # Warnings become errors
+claude-skill-lint lint . --ratchet                          # Prevent quality regression
+claude-skill-lint lint . --changed-only --base origin/main  # Only changed files
+claude-skill-lint lint . --format json                      # JSON for tooling
+claude-skill-lint lint . --format github                    # GitHub Actions annotations
 ```
 
-### `skill-lint init`
+### `claude-skill-lint init`
 
 ```bash
-skill-lint init           # Auto-detect format, generate config
-skill-lint init --force   # Overwrite existing
+claude-skill-lint init           # Auto-detect format, generate config
+claude-skill-lint init --force   # Overwrite existing
 ```
 
 Exit codes: `0` clean, `1` errors found, `2` config error.
@@ -213,7 +213,7 @@ Exit codes: `0` clean, `1` errors found, `2` config error.
 
 ## Configuration
 
-`skill-lint init` generates this. Or create `.skill-lint.yaml` manually:
+`claude-skill-lint init` generates this. Or create `.skill-lint.yaml` manually:
 
 ```yaml
 skills_root: "."
@@ -266,16 +266,16 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - run: npm install -g skill-lint
+      - run: npm install -g claude-skill-lint
 
       - name: Graph validation
-        run: skill-lint graph . --format github
+        run: claude-skill-lint graph . --format github
 
       - name: Lint changed skills
-        run: skill-lint lint . --format github --changed-only --base origin/${{ github.base_ref }}
+        run: claude-skill-lint lint . --format github --changed-only --base origin/${{ github.base_ref }}
 
       - name: Quality ratchet
-        run: skill-lint lint . --ratchet --base origin/${{ github.base_ref }} --format github
+        run: claude-skill-lint lint . --ratchet --base origin/${{ github.base_ref }} --format github
 ```
 
 `--format github` produces annotations that appear inline on PR diffs.
@@ -286,7 +286,7 @@ jobs:
 #!/bin/sh
 STAGED=$(git diff --cached --name-only --diff-filter=ACM -- '*.md')
 if [ -n "$STAGED" ]; then
-  npx skill-lint lint $STAGED --level 1
+  npx claude-skill-lint lint $STAGED --level 1
 fi
 ```
 
