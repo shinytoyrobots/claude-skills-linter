@@ -3,7 +3,7 @@
  * Returns absolute paths to .md files changed since a given base ref.
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { resolve } from 'node:path';
 
 /** Error thrown when git operations fail (non-git dir, bad ref, etc.). */
@@ -27,7 +27,7 @@ export class ChangedFilesError extends Error {
 export function getChangedFiles(base: string): string[] {
   let repoRoot: string;
   try {
-    repoRoot = execSync('git rev-parse --show-toplevel', {
+    repoRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
       encoding: 'utf-8',
     }).trim();
   } catch {
@@ -38,8 +38,9 @@ export function getChangedFiles(base: string): string[] {
 
   let diffOutput: string;
   try {
-    diffOutput = execSync(
-      `git diff --name-only --diff-filter=ACM ${base}...HEAD -- '*.md'`,
+    diffOutput = execFileSync(
+      'git',
+      ['diff', '--name-only', '--diff-filter=ACM', `${base}...HEAD`, '--', '*.md'],
       { encoding: 'utf-8', cwd: repoRoot },
     ).trim();
   } catch (err) {
