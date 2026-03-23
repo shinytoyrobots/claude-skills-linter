@@ -186,15 +186,12 @@ export async function extractAll(
     effectivePatterns = patterns;
   }
 
-  const files: string[] = [];
-
-  for (const pattern of effectivePatterns) {
-    const matched = await glob(pattern, {
-      nodir: true,
-      ignore: ['**/node_modules/**', ...ignore],
-    });
-    files.push(...matched);
-  }
+  const allMatched = await Promise.all(
+    effectivePatterns.map((pattern) =>
+      glob(pattern, { nodir: true, ignore: ['**/node_modules/**', ...ignore] })
+    )
+  );
+  const files: string[] = allMatched.flat();
 
   // Deduplicate in case patterns overlap.
   const unique = [...new Set(files)];
