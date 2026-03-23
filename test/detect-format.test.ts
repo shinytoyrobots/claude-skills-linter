@@ -218,13 +218,19 @@ describe('detectFormat', () => {
         'plugins/foo/.claude-plugin/plugin.json',
       ]);
       const result = detectFormat(tmp, makeConfig());
-      assert.ok(['legacy-commands', 'plugin', 'multi-plugin'].includes(result));
+      assert.ok(['legacy-commands', 'plugin', 'multi-plugin', 'project-skills'].includes(result));
     });
 
     it('returns a valid RepoFormat string for legacy-commands', () => {
       createDirs(tmp, ['commands']);
       const result = detectFormat(tmp, makeConfig());
-      assert.ok(['legacy-commands', 'plugin', 'multi-plugin'].includes(result));
+      assert.ok(['legacy-commands', 'plugin', 'multi-plugin', 'project-skills'].includes(result));
+    });
+
+    it('returns a valid RepoFormat string for project-skills', () => {
+      createFiles(tmp, ['.claude/skills/my-skill/SKILL.md']);
+      const result = detectFormat(tmp, makeConfig());
+      assert.ok(['legacy-commands', 'plugin', 'multi-plugin', 'project-skills'].includes(result));
     });
   });
 
@@ -318,9 +324,104 @@ describe('detectFormat', () => {
           assert.ok(err.message.includes('legacy-commands'));
           assert.ok(err.message.includes('plugin'));
           assert.ok(err.message.includes('multi-plugin'));
+          assert.ok(err.message.includes('project-skills'));
           return true;
         },
       );
+    });
+  });
+
+  // --- Story-031: project-skills format ---
+
+  describe('story-031 AC-1: .claude/skills/ with SKILL.md detects project-skills', () => {
+    it('detects project-skills when .claude/skills/*/SKILL.md exists', () => {
+      createFiles(tmp, ['.claude/skills/my-skill/SKILL.md']);
+      const result = detectFormat(tmp, makeConfig());
+      assert.equal(result, 'project-skills');
+    });
+
+    it('detects project-skills with multiple skill subdirectories', () => {
+      createFiles(tmp, [
+        '.claude/skills/skill-a/SKILL.md',
+        '.claude/skills/skill-b/SKILL.md',
+      ]);
+      const result = detectFormat(tmp, makeConfig());
+      assert.equal(result, 'project-skills');
+    });
+  });
+
+  describe('story-031 AC-2: project-skills wins over legacy dirs', () => {
+    it('prefers project-skills over legacy-commands when both exist', () => {
+      createFiles(tmp, ['.claude/skills/my-skill/SKILL.md']);
+      createDirs(tmp, ['commands', 'agents', 'context']);
+      const result = detectFormat(tmp, makeConfig());
+      assert.equal(result, 'project-skills');
+    });
+
+    it('prefers project-skills over legacy commands/ alone', () => {
+      createFiles(tmp, ['.claude/skills/my-skill/SKILL.md']);
+      createDirs(tmp, ['commands']);
+      const result = detectFormat(tmp, makeConfig());
+      assert.equal(result, 'project-skills');
+    });
+  });
+
+  describe('story-031 AC-3: marketplace wins over project-skills', () => {
+    it('prefers plugin over project-skills when marketplace.json exists', () => {
+      createFiles(tmp, [
+        '.claude-plugin/marketplace.json',
+        'skills/my-skill/SKILL.md',
+        '.claude/skills/my-skill/SKILL.md',
+      ]);
+      const result = detectFormat(tmp, makeConfig());
+      assert.equal(result, 'plugin');
+    });
+
+    it('prefers multi-plugin over project-skills when marketplace.json exists', () => {
+      createFiles(tmp, [
+        '.claude-plugin/marketplace.json',
+        'plugins/foo/.claude-plugin/plugin.json',
+        '.claude/skills/my-skill/SKILL.md',
+      ]);
+      const result = detectFormat(tmp, makeConfig());
+      assert.equal(result, 'multi-plugin');
+    });
+  });
+
+  describe('story-031 AC-4: .claude/skills/ without SKILL.md falls through', () => {
+    it('falls through to legacy-commands when .claude/skills/ has no SKILL.md', () => {
+      createDirs(tmp, ['.claude/skills/my-skill']);
+      createDirs(tmp, ['commands']);
+      const result = detectFormat(tmp, makeConfig());
+      assert.equal(result, 'legacy-commands');
+    });
+
+    it('falls through to fallback when .claude/skills/ exists but is empty', () => {
+      createDirs(tmp, ['.claude/skills']);
+      const result = detectFormat(tmp, makeConfig());
+      assert.equal(result, 'legacy-commands');
+      assert.ok(stderrOutput.includes('No recognized repo format signals found'));
+    });
+
+    it('falls through when .claude/skills/ has files but no SKILL.md', () => {
+      createFiles(tmp, ['.claude/skills/my-skill/README.md']);
+      const result = detectFormat(tmp, makeConfig());
+      assert.equal(result, 'legacy-commands');
+      assert.ok(stderrOutput.includes('No recognized repo format signals found'));
+    });
+  });
+
+  describe('story-031 AC-5: config format: project-skills override', () => {
+    it('respects project-skills config override', () => {
+      const result = detectFormat(tmp, makeConfig({ format: 'project-skills' }));
+      assert.equal(result, 'project-skills');
+    });
+
+    it('config project-skills override skips filesystem detection', () => {
+      // No .claude/skills/ dir at all, but config says project-skills
+      const result = detectFormat(tmp, makeConfig({ format: 'project-skills' }));
+      assert.equal(result, 'project-skills');
+      assert.equal(stderrOutput, '');
     });
   });
 
