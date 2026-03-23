@@ -14,7 +14,7 @@ export class ConfigError extends Error {
     }
 }
 /** Returns a fresh copy of the default configuration. */
-function getDefaults() {
+export function getDefaults() {
     return {
         skills_root: '.',
         default_level: 0,

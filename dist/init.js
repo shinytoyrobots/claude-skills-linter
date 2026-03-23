@@ -4,27 +4,9 @@
  */
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { getDefaults } from './config.js';
 import { detectFormat } from './detect-format.js';
 const CONFIG_FILENAME = '.skill-lint.yaml';
-/** Returns a minimal Config with no format override (for detection). */
-function defaultConfigForDetection() {
-    return {
-        skills_root: '.',
-        default_level: 0,
-        levels: {},
-        tools: { mcp_pattern: 'mcp__*', custom: [] },
-        models: ['opus', 'sonnet', 'haiku'],
-        limits: { max_file_size: 15360 },
-        ignore: ['**/README.md'],
-        prefixes: 'PREFIXES.md',
-        graph: {
-            warn_orphans: true,
-            warn_fanout_above: 50000,
-            detect_cycles: true,
-            detect_duplicates: true,
-        },
-    };
-}
 /** Build the YAML config string based on detected format. */
 export function buildConfigYaml(detectedFormat) {
     const lines = [
@@ -51,7 +33,7 @@ export function runInit(rootDir, options = {}) {
         return 0;
     }
     // AC-1: Call detectFormat() with a default config (no format override)
-    const detectedFormat = detectFormat(rootDir, defaultConfigForDetection());
+    const detectedFormat = detectFormat(rootDir, getDefaults());
     // Build and write the config file
     const yaml = buildConfigYaml(detectedFormat);
     writeFileSync(configPath, yaml, 'utf-8');
