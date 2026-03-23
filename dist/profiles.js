@@ -121,7 +121,7 @@ function rawQualityLevel(frontmatter) {
  * @param config - Config with `skills_root`.
  * @returns Validation results for any regressions found.
  */
-export async function checkRatchet(files, baseRef, gitRoot, config) {
+export async function checkRatchet(files, baseRef, gitRoot, _config) {
     const results = [];
     for (const file of files) {
         // Compute POSIX-style relative path from git root
