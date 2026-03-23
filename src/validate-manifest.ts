@@ -227,7 +227,7 @@ function validatePluginSource(
 function validateMultiPluginManifests(
   rootDir: string,
   pluginEntries: PluginEntry[],
-  marketplacePath: string,
+  _marketplacePath: string,
   results: ValidationResult[],
 ): void {
   for (const entry of pluginEntries) {

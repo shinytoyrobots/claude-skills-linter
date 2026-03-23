@@ -33,5 +33,5 @@ export declare function resolveLevel(filePath: string, frontmatter: Record<strin
  * @param config - Config with `skills_root`.
  * @returns Validation results for any regressions found.
  */
-export declare function checkRatchet(files: ExtractResult[], baseRef: string, gitRoot: string, config: Pick<Config, 'skills_root'>): Promise<ValidationResult[]>;
+export declare function checkRatchet(files: ExtractResult[], baseRef: string, gitRoot: string, _config: Pick<Config, 'skills_root'>): Promise<ValidationResult[]>;
 //# sourceMappingURL=profiles.d.ts.map

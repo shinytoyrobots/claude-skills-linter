@@ -147,7 +147,7 @@ export async function checkRatchet(
   files: ExtractResult[],
   baseRef: string,
   gitRoot: string,
-  config: Pick<Config, 'skills_root'>,
+  _config: Pick<Config, 'skills_root'>,
 ): Promise<ValidationResult[]> {
   const results: ValidationResult[] = [];
 

@@ -176,7 +176,7 @@ function validatePluginSource(entry, rootDir, marketplacePath, results) {
 /**
  * AC-5, AC-6, AC-3: Validate plugin.json files for multi-plugin format.
  */
-function validateMultiPluginManifests(rootDir, pluginEntries, marketplacePath, results) {
+function validateMultiPluginManifests(rootDir, pluginEntries, _marketplacePath, results) {
     for (const entry of pluginEntries) {
         const source = entry.source;
         const marketplaceName = entry.name;

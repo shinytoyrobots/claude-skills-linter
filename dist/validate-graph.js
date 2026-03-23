@@ -78,16 +78,6 @@ function findLine(text, needle) {
     return line;
 }
 /**
- * Build a repo-relative key from an absolute file path by stripping skills_root.
- */
-function repoRelativeKey(filePath, skillsRoot) {
-    const root = skillsRoot.endsWith('/') ? skillsRoot : skillsRoot + '/';
-    if (filePath.startsWith(root)) {
-        return filePath.slice(root.length);
-    }
-    return filePath;
-}
-/**
  * Build a canonical name from a file's type and basename.
  *
  * Claude Code installs skills into a flat `~/.claude/commands/{type}/{filename}`
@@ -543,7 +533,6 @@ function detectCycles(files, index, format, rootDir, filePathSet, pathToFile) {
     }
     // DFS cycle detection.
     const color = new Map();
-    const parent = new Map();
     const reportedCycles = new Set();
     for (const key of adjacency.keys()) {
         color.set(key, 0 /* Color.WHITE */);
