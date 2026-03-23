@@ -19,9 +19,11 @@
       "description": "Preferred model to use when running this command"
     },
     "allowed-tools": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "List of tools the command is permitted to use"
+      "oneOf": [
+        { "type": "array", "items": { "type": "string" } },
+        { "type": "string" }
+      ],
+      "description": "List of tools the command is permitted to use (array or space-delimited string)"
     },
     "quality_level": {
       "type": "integer",

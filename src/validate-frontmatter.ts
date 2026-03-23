@@ -35,6 +35,26 @@ const BUILTIN_TOOLS: ReadonlySet<string> = new Set([
   'WebSearch', 'WebFetch', 'AskUserQuestion', 'TodoRead', 'TodoWrite', 'NotebookEdit',
 ]);
 
+/**
+ * Extract the base tool name from a pattern-style declaration.
+ * e.g. "Bash(python*)" → "Bash", "Read" → "Read", "(orphan)" → ""
+ */
+export function extractBaseToolName(tool: string): string {
+  const parenIndex = tool.indexOf('(');
+  if (parenIndex === -1) return tool;
+  return tool.slice(0, parenIndex);
+}
+
+/**
+ * Normalize allowed-tools to an array of strings.
+ * Handles both array format and space-delimited string format.
+ */
+function normalizeAllowedTools(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String);
+  if (typeof value === 'string') return value.split(/\s+/).filter(Boolean);
+  return [];
+}
+
 /** A rule definition with the x-skill-lint-level extension. */
 export interface LevelRule {
   given: string;
@@ -100,17 +120,20 @@ function buildRules(config?: Pick<Config, 'models' | 'tools' | 'limits'>): Recor
 
   /** Custom inline function: checks each tool in allowed-tools is known. */
   const unknownToolFn = (targetVal: unknown): Array<{ message: string }> => {
-    if (!Array.isArray(targetVal) || targetVal.length === 0) {
-      return [];
-    }
+    const tools = normalizeAllowedTools(targetVal);
+    if (tools.length === 0) return [];
     const customTools = new Set(cfg.tools.custom);
     const results: Array<{ message: string }> = [];
-    for (const tool of targetVal) {
-      const name = String(tool);
-      if (BUILTIN_TOOLS.has(name)) continue;
-      if (name.startsWith('mcp__')) continue;
-      if (customTools.has(name)) continue;
-      results.push({ message: `unknown tool "${name}" in allowed-tools` });
+    for (const tool of tools) {
+      const baseName = extractBaseToolName(tool);
+      if (baseName === '') {
+        results.push({ message: `unknown tool "${tool}" in allowed-tools` });
+        continue;
+      }
+      if (BUILTIN_TOOLS.has(baseName)) continue;
+      if (baseName.startsWith('mcp__')) continue;
+      if (customTools.has(baseName)) continue;
+      results.push({ message: `unknown tool "${baseName}" in allowed-tools` });
     }
     return results;
   };
@@ -118,12 +141,13 @@ function buildRules(config?: Pick<Config, 'models' | 'tools' | 'limits'>): Recor
   /** Custom inline function: checks at least one allowed tool appears in body text. */
   const toolsNotInBodyFn = (targetVal: unknown): Array<{ message: string }> => {
     const target = targetVal as Record<string, unknown>;
-    const allowedTools = target['allowed-tools'];
-    if (!Array.isArray(allowedTools) || allowedTools.length === 0) {
-      return [];
-    }
+    const tools = normalizeAllowedTools(target['allowed-tools']);
+    if (tools.length === 0) return [];
     const bodyText = String(target['___body_text'] ?? '');
-    const anyFound = allowedTools.some((tool) => bodyText.includes(String(tool)));
+    const anyFound = tools.some((tool) => {
+      const baseName = extractBaseToolName(tool);
+      return baseName !== '' && bodyText.includes(baseName);
+    });
     if (!anyFound) {
       return [{ message: 'none of the declared allowed-tools appear in the file body' }];
     }

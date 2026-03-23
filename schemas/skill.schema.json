@@ -32,6 +32,13 @@
       "type": "boolean",
       "description": "Whether users can invoke this skill directly"
     },
+    "allowed-tools": {
+      "oneOf": [
+        { "type": "array", "items": { "type": "string" } },
+        { "type": "string" }
+      ],
+      "description": "List of tools the skill is permitted to use (array or space-delimited string)"
+    },
     "quality_level": {
       "type": "integer",
       "minimum": 0,

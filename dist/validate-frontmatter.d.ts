@@ -1,4 +1,9 @@
 import type { Config, ExtractResult, ValidationResult } from './types.js';
+/**
+ * Extract the base tool name from a pattern-style declaration.
+ * e.g. "Bash(python*)" → "Bash", "Read" → "Read", "(orphan)" → ""
+ */
+export declare function extractBaseToolName(tool: string): string;
 /** A rule definition with the x-skill-lint-level extension. */
 export interface LevelRule {
     given: string;
