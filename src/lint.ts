@@ -12,7 +12,7 @@ import { validateManifest } from './validate-manifest.js';
 import { reportTerminal, reportGitHub, reportJSON } from './reporter.js';
 import { execFileSync } from 'node:child_process';
 import { minimatch } from 'minimatch';
-import { getChangedFiles, ChangedFilesError } from './changed-files.js';
+import { getChangedFiles } from './changed-files.js';
 import { checkRatchet } from './profiles.js';
 
 /** Options passed from the CLI to the lint orchestrator. */

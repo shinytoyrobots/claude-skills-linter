@@ -90,17 +90,6 @@ function findLine(text: string, needle: string): number | undefined {
 }
 
 /**
- * Build a repo-relative key from an absolute file path by stripping skills_root.
- */
-function repoRelativeKey(filePath: string, skillsRoot: string): string {
-  const root = skillsRoot.endsWith('/') ? skillsRoot : skillsRoot + '/';
-  if (filePath.startsWith(root)) {
-    return filePath.slice(root.length);
-  }
-  return filePath;
-}
-
-/**
  * Build a canonical name from a file's type and basename.
  *
  * Claude Code installs skills into a flat `~/.claude/commands/{type}/{filename}`
@@ -659,7 +648,6 @@ function detectCycles(
 
   // DFS cycle detection.
   const color = new Map<string, Color>();
-  const parent = new Map<string, string | null>();
   const reportedCycles = new Set<string>();
 
   for (const key of adjacency.keys()) {
