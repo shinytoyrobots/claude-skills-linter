@@ -52,13 +52,23 @@ $ claude-skill-lint graph .
 
 The headline: `inv-output-conventions.md` was renamed to `inv-output-patterns.md` at some point. Nine invention skills still referenced the old name. They silently got no output formatting guidance. A rename bug, invisible at authoring time, caught in seconds.
 
-### Against Anthropic's official skills repo
+### Against Anthropic's official skills repo (plugin format)
 
 ```
 $ claude-skill-lint graph ~/Development/anthropic-skills/
+✖ 19 errors and 10 warnings in 26 files (63 files checked)
 ```
 
-Name-collision findings in the `claude-api` skill — five language-specific `claude-api.md` files (PHP, Java, Ruby, Go, C#) all resolve to the same canonical name. True findings from Anthropic's own reference implementation. Orphaned theme files in `theme-factory` (loaded dynamically, not via static references). Legitimate structural observations, not false positives.
+Name-collision findings in the `claude-api` skill — five language-specific `claude-api.md` files (PHP, Java, Ruby, Go, C#) all resolve to the same canonical name. Broken references to `shared/tool-use-concepts.md` and `shared/live-sources.md` — files that don't exist. Orphaned theme files in `theme-factory` (loaded dynamically, not via static references). Legitimate structural observations, not false positives.
+
+### Against a multi-plugin production repo
+
+```
+$ claude-skill-lint lint ~/Development/work/ai-plugins/
+✖ 3 warnings in 3 files (45 files checked)
+```
+
+Three unlisted plugins (valid `plugin.json` but not declared in the root `marketplace.json`). Graph validation: clean — zero errors across 45 files. The multi-plugin format's relative path resolution (`../../context/foo.md`) works correctly.
 
 ### Frontmatter lint: honest assessment
 
@@ -109,10 +119,24 @@ Validates YAML frontmatter against file-type schemas:
 
 | File Type | Required Fields | Optional Fields |
 |-----------|----------------|-----------------|
-| Command | `description` | `model`, `allowed-tools`, `argument-hint` |
-| Agent | `name`, `description` | `model`, `tools` |
-| Skill (plugin) | `name`, `description` | `invocable`, `argument-hint`, `user-invocable` |
+| Command | `description` | `model`, `allowed-tools`, `argument-hint`, `context`, `agent`, `effort`, `hooks`, `compatibility`, `metadata` |
+| Agent | `name`, `description` | `model`, `tools`, `context`, `agent`, `effort`, `hooks`, `compatibility`, `metadata` |
+| Skill (plugin) | `name`, `description` | `invocable`, `argument-hint`, `user-invocable`, `allowed-tools`, `context`, `agent`, `effort`, `hooks`, `compatibility`, `metadata` |
 | Context | *(none)* | — |
+
+#### Modern Frontmatter Fields
+
+These fields are supported across all file types (command, agent, skill):
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `context` | `string` | Execution context for the skill (e.g. `fork` to run in a separate process) |
+| `agent` | `string` | Agent mode or name to delegate execution to |
+| `effort` | `string` | Reasoning effort level — controls how much thinking the model applies |
+| `hooks` | `object` | Lifecycle hooks triggered before/after skill execution |
+| `compatibility` | `string` | Compatibility requirements or version constraints |
+| `metadata` | `object` | Arbitrary key-value metadata for tooling and marketplace use |
+| `allowed-tools` | `array` or `string` | Tools the skill can use. Supports glob patterns like `mcp__*` and `Bash(*)` for broad matching, or specific tool names for fine-grained control |
 
 At Level 1: model enum validation, known tool verification, tool-to-body consistency, file size limits.
 
@@ -160,13 +184,64 @@ Compares each file's `quality_level` against the base branch. If any level decre
 
 ## Repository Formats
 
-Auto-detected:
+claude-skill-lint auto-detects your repository structure. Four formats are supported:
 
-| Format | Structure | Signal |
-|--------|-----------|--------|
-| **legacy-commands** | `commands/`, `agents/`, `context/` | No `.claude-plugin/` |
-| **plugin** | `skills/*/SKILL.md` | Marketplace JSON at root |
-| **multi-plugin** | `plugins/*/skills/*/SKILL.md` | Plugin subdirectories with `plugin.json` |
+| Format | Structure | Detection Signal |
+|--------|-----------|-----------------|
+| **legacy-commands** | `commands/`, `agents/`, `context/` at repo root | No `.claude-plugin/` directory |
+| **project-skills** | `.claude/skills/{name}/SKILL.md` | `.claude/skills/` with `SKILL.md` files |
+| **plugin** | `skills/{name}/SKILL.md` with marketplace manifest | `.claude-plugin/marketplace.json` at root |
+| **multi-plugin** | `plugins/{name}/skills/{skill}/SKILL.md` | Plugin subdirectories with `.claude-plugin/plugin.json` |
+
+Detection priority: config override > multi-plugin > plugin > project-skills > legacy-commands. The first match wins.
+
+### project-skills: The `.claude/skills/` Format
+
+The `project-skills` format uses `.claude/skills/{name}/SKILL.md` — the same structure Claude Code uses for project-scoped skills. Each skill lives in its own directory under `.claude/skills/`.
+
+claude-skill-lint discovers skills in nested `.claude/skills/` directories automatically. In monorepo setups where multiple packages each have their own `.claude/skills/` directory, point the linter at the repo root and it finds them all.
+
+### Migration Note
+
+For repos transitioning from legacy commands to modern skills, claude-skill-lint validates both locations in a single run. Set the format explicitly in `.skill-lint.yaml` if auto-detection picks the wrong one, or omit it and let detection handle the transition — legacy-commands is the fallback when no modern format signals are found.
+
+## Custom Structures
+
+Not every repo follows a standard layout. claude-skill-lint provides three configuration levers for non-standard structures:
+
+### `skills_root`
+
+If your skill files live in a subdirectory rather than the repo root:
+
+```yaml
+skills_root: "packages/my-plugin"
+```
+
+All path resolution starts from this root. Useful for monorepos where skills are nested deep.
+
+### `format` Override
+
+Auto-detection works for standard layouts. When it doesn't — or when your repo is mid-migration between formats — set the format explicitly:
+
+```yaml
+format: plugin          # Force plugin format detection
+# format: legacy-commands | plugin | multi-plugin | project-skills
+```
+
+### `ignore` Patterns
+
+Exclude paths that look like skills but aren't:
+
+```yaml
+ignore:
+  - "**/README.md"
+  - "**/CLAUDE.md"
+  - "node_modules/**"
+  - "docs/**/*.md"
+  - "archive/**"
+```
+
+Glob patterns, matched against file paths relative to `skills_root`. `node_modules/` is always excluded.
 
 ## Commands
 
@@ -224,7 +299,7 @@ levels:
   agents/: 1
 
 # Auto-detected if omitted
-# format: legacy-commands | plugin | multi-plugin
+# format: legacy-commands | plugin | multi-plugin | project-skills
 
 models: [opus, sonnet, haiku]
 
