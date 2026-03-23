@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { validateFrontmatter, getRuleset } from '../src/validate-frontmatter.js';
+import { validateFrontmatter, getRuleset, extractBaseToolName } from '../src/validate-frontmatter.js';
 import type { ExtractResult } from '../src/types.js';
 
 /**
@@ -592,5 +592,242 @@ describe('Level 1 rules', () => {
       (r) => r.rule === 'unknown-tool' || r.rule === 'tools-not-in-body',
     );
     assert.equal(toolRules.length, 0, `Expected no tool rules on agent file, got: ${JSON.stringify(toolRules)}`);
+  });
+});
+
+// ─── Story-035: allowed-tools pattern syntax ───
+
+describe('extractBaseToolName', () => {
+  it('returns plain tool name unchanged', () => {
+    assert.equal(extractBaseToolName('Bash'), 'Bash');
+  });
+
+  it('strips pattern from Bash(python*)', () => {
+    assert.equal(extractBaseToolName('Bash(python*)'), 'Bash');
+  });
+
+  it('strips pattern from Bash(git*)', () => {
+    assert.equal(extractBaseToolName('Bash(git*)'), 'Bash');
+  });
+
+  it('returns empty string for (orphan)', () => {
+    assert.equal(extractBaseToolName('(orphan)'), '');
+  });
+
+  it('handles nested parens by stripping from first paren', () => {
+    assert.equal(extractBaseToolName('Read(foo(bar))'), 'Read');
+  });
+});
+
+describe('Story-035: allowed-tools pattern syntax in unknown-tool', () => {
+  // AC-1: Bash(python*) → extract base tool Bash, validate as known
+  it('AC-1: Bash(python*) is accepted as known tool', async () => {
+    const input = makeResult({
+      fileType: 'command',
+      data: {
+        description: 'A command with pattern tool',
+        'allowed-tools': ['Bash(python*)'],
+        '___body_text': 'Use Bash to run python scripts.',
+      },
+    });
+
+    const results = await validateFrontmatter([input], 1);
+    const toolWarnings = results.filter((r) => r.rule === 'unknown-tool');
+    assert.equal(toolWarnings.length, 0, `Expected no unknown-tool warnings, got: ${JSON.stringify(toolWarnings)}`);
+  });
+
+  // AC-2: Bash(git*) → accept (base tool known)
+  it('AC-2: Bash(git*) is accepted as known tool', async () => {
+    const input = makeResult({
+      fileType: 'command',
+      data: {
+        description: 'A command with git pattern',
+        'allowed-tools': ['Bash(git*)'],
+        '___body_text': 'Use Bash to run git commands.',
+      },
+    });
+
+    const results = await validateFrontmatter([input], 1);
+    const toolWarnings = results.filter((r) => r.rule === 'unknown-tool');
+    assert.equal(toolWarnings.length, 0, `Expected no unknown-tool warnings, got: ${JSON.stringify(toolWarnings)}`);
+  });
+
+  // AC-3: UnknownTool(pattern*) → report unknown-tool for UnknownTool
+  it('AC-3: UnknownTool(pattern*) reports unknown-tool for base name', async () => {
+    const input = makeResult({
+      fileType: 'command',
+      data: {
+        description: 'A command with unknown pattern tool',
+        'allowed-tools': ['UnknownTool(pattern*)'],
+        '___body_text': 'Use UnknownTool for something.',
+      },
+    });
+
+    const results = await validateFrontmatter([input], 1);
+    const toolWarnings = results.filter((r) => r.rule === 'unknown-tool');
+    assert.ok(toolWarnings.length > 0, `Expected unknown-tool warning, got: ${JSON.stringify(results)}`);
+    assert.ok(toolWarnings[0].message.includes('UnknownTool'), `Expected message to mention UnknownTool, got: ${toolWarnings[0].message}`);
+  });
+
+  // AC-4: Mix of plain and pattern tools → validate each independently
+  it('AC-4: mix of plain and pattern tools validates each independently', async () => {
+    const input = makeResult({
+      fileType: 'command',
+      data: {
+        description: 'A command with mixed tools',
+        'allowed-tools': ['Read', 'Bash(python*)', 'FakeTool', 'Grep'],
+        '___body_text': 'Use Read, Bash, and Grep tools.',
+      },
+    });
+
+    const results = await validateFrontmatter([input], 1);
+    const toolWarnings = results.filter((r) => r.rule === 'unknown-tool');
+    assert.equal(toolWarnings.length, 1, `Expected 1 unknown-tool warning (FakeTool), got: ${JSON.stringify(toolWarnings)}`);
+    assert.ok(toolWarnings[0].message.includes('FakeTool'));
+  });
+
+  // AC-5: Space-delimited string format
+  it('AC-5: space-delimited string "Bash(python*) Read Glob" is handled', async () => {
+    const input = makeResult({
+      fileType: 'command',
+      data: {
+        description: 'A command with string allowed-tools',
+        'allowed-tools': 'Bash(python*) Read Glob',
+        '___body_text': 'Use Bash, Read, and Glob tools.',
+      },
+    });
+
+    const results = await validateFrontmatter([input], 1);
+    const toolWarnings = results.filter((r) => r.rule === 'unknown-tool');
+    assert.equal(toolWarnings.length, 0, `Expected no unknown-tool warnings, got: ${JSON.stringify(toolWarnings)}`);
+  });
+
+  it('AC-5: space-delimited string with unknown tool reports error', async () => {
+    const input = makeResult({
+      fileType: 'command',
+      data: {
+        description: 'A command with string allowed-tools',
+        'allowed-tools': 'Read FakeTool Grep',
+        '___body_text': 'Use Read and Grep tools.',
+      },
+    });
+
+    const results = await validateFrontmatter([input], 1);
+    const toolWarnings = results.filter((r) => r.rule === 'unknown-tool');
+    assert.ok(toolWarnings.length > 0, `Expected unknown-tool warning, got: ${JSON.stringify(results)}`);
+    assert.ok(toolWarnings[0].message.includes('FakeTool'));
+  });
+
+  // Edge case: (orphan) → empty base name → unknown tool error
+  it('edge case: (orphan) reports unknown tool', async () => {
+    const input = makeResult({
+      fileType: 'command',
+      data: {
+        description: 'A command with orphan pattern',
+        'allowed-tools': ['(orphan)'],
+        '___body_text': 'Some body text.',
+      },
+    });
+
+    const results = await validateFrontmatter([input], 1);
+    const toolWarnings = results.filter((r) => r.rule === 'unknown-tool');
+    assert.ok(toolWarnings.length > 0, `Expected unknown-tool warning for (orphan), got: ${JSON.stringify(results)}`);
+    assert.ok(toolWarnings[0].message.includes('(orphan)'));
+  });
+});
+
+describe('Story-035: tools-not-in-body with pattern syntax', () => {
+  it('Bash(python*) matches "Bash" in body text', async () => {
+    const input = makeResult({
+      fileType: 'command',
+      data: {
+        description: 'A command',
+        'allowed-tools': ['Bash(python*)'],
+        '___body_text': 'Use the Bash tool to run scripts.',
+      },
+    });
+
+    const results = await validateFrontmatter([input], 1);
+    const bodyWarnings = results.filter((r) => r.rule === 'tools-not-in-body');
+    assert.equal(bodyWarnings.length, 0, `Expected no tools-not-in-body warnings, got: ${JSON.stringify(bodyWarnings)}`);
+  });
+
+  it('Bash(python*) does NOT match when Bash is absent from body', async () => {
+    const input = makeResult({
+      fileType: 'command',
+      data: {
+        description: 'A command',
+        'allowed-tools': ['Bash(python*)'],
+        '___body_text': 'This body does not mention the tool.',
+      },
+    });
+
+    const results = await validateFrontmatter([input], 1);
+    const bodyWarnings = results.filter((r) => r.rule === 'tools-not-in-body');
+    assert.ok(bodyWarnings.length > 0, `Expected tools-not-in-body warning, got: ${JSON.stringify(results)}`);
+  });
+
+  it('space-delimited string format works with tools-not-in-body', async () => {
+    const input = makeResult({
+      fileType: 'command',
+      data: {
+        description: 'A command',
+        'allowed-tools': 'Bash(python*) Read',
+        '___body_text': 'Use Read to inspect files.',
+      },
+    });
+
+    const results = await validateFrontmatter([input], 1);
+    const bodyWarnings = results.filter((r) => r.rule === 'tools-not-in-body');
+    assert.equal(bodyWarnings.length, 0, `Expected no tools-not-in-body warnings, got: ${JSON.stringify(bodyWarnings)}`);
+  });
+
+  it('(orphan) with empty base name does not match body', async () => {
+    const input = makeResult({
+      fileType: 'command',
+      data: {
+        description: 'A command',
+        'allowed-tools': ['(orphan)'],
+        '___body_text': 'Some body with orphan text.',
+      },
+    });
+
+    const results = await validateFrontmatter([input], 1);
+    const bodyWarnings = results.filter((r) => r.rule === 'tools-not-in-body');
+    assert.ok(bodyWarnings.length > 0, `Expected tools-not-in-body warning for empty base name, got: ${JSON.stringify(results)}`);
+  });
+});
+
+describe('Story-035: skill file type with allowed-tools', () => {
+  it('skill file validates allowed-tools with pattern syntax', async () => {
+    const input = makeResult({
+      fileType: 'skill',
+      data: {
+        name: 'my-skill',
+        description: 'A skill',
+        'allowed-tools': ['Bash(python*)', 'Read'],
+        '___body_text': 'Use Bash and Read tools.',
+      },
+    });
+
+    const results = await validateFrontmatter([input], 1);
+    const toolWarnings = results.filter((r) => r.rule === 'unknown-tool');
+    assert.equal(toolWarnings.length, 0, `Expected no unknown-tool warnings on skill, got: ${JSON.stringify(toolWarnings)}`);
+  });
+
+  it('skill file with string allowed-tools works', async () => {
+    const input = makeResult({
+      fileType: 'skill',
+      data: {
+        name: 'my-skill',
+        description: 'A skill',
+        'allowed-tools': 'Bash Read Grep',
+        '___body_text': 'Use Bash, Read, and Grep tools.',
+      },
+    });
+
+    const results = await validateFrontmatter([input], 1);
+    const toolWarnings = results.filter((r) => r.rule === 'unknown-tool');
+    assert.equal(toolWarnings.length, 0, `Expected no unknown-tool warnings on skill, got: ${JSON.stringify(toolWarnings)}`);
   });
 });

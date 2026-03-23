@@ -27,6 +27,27 @@ const BUILTIN_TOOLS = new Set([
     'Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'Agent',
     'WebSearch', 'WebFetch', 'AskUserQuestion', 'TodoRead', 'TodoWrite', 'NotebookEdit',
 ]);
+/**
+ * Extract the base tool name from a pattern-style declaration.
+ * e.g. "Bash(python*)" → "Bash", "Read" → "Read", "(orphan)" → ""
+ */
+export function extractBaseToolName(tool) {
+    const parenIndex = tool.indexOf('(');
+    if (parenIndex === -1)
+        return tool;
+    return tool.slice(0, parenIndex);
+}
+/**
+ * Normalize allowed-tools to an array of strings.
+ * Handles both array format and space-delimited string format.
+ */
+function normalizeAllowedTools(value) {
+    if (Array.isArray(value))
+        return value.map(String);
+    if (typeof value === 'string')
+        return value.split(/\s+/).filter(Boolean);
+    return [];
+}
 /** Default config values used when no config is provided. */
 const DEFAULT_CONFIG = {
     models: ['opus', 'sonnet', 'haiku'],
@@ -48,6 +69,7 @@ const DEFAULT_CONFIG = {
  * - tools-not-in-body: Checks at least one allowed tool appears in body
  * - file-size-limit: Checks ___file_size <= config.limits.max_file_size
  * - skill-name-format: Checks skill name matches kebab-case pattern
+ * - effort-invalid: Checks effort value is one of [low, medium, high, max]
  */
 function buildRules(config) {
     const cfg = config ?? DEFAULT_CONFIG;
@@ -75,32 +97,38 @@ function buildRules(config) {
     };
     /** Custom inline function: checks each tool in allowed-tools is known. */
     const unknownToolFn = (targetVal) => {
-        if (!Array.isArray(targetVal) || targetVal.length === 0) {
+        const tools = normalizeAllowedTools(targetVal);
+        if (tools.length === 0)
             return [];
-        }
         const customTools = new Set(cfg.tools.custom);
         const results = [];
-        for (const tool of targetVal) {
-            const name = String(tool);
-            if (BUILTIN_TOOLS.has(name))
+        for (const tool of tools) {
+            const baseName = extractBaseToolName(tool);
+            if (baseName === '') {
+                results.push({ message: `unknown tool "${tool}" in allowed-tools` });
                 continue;
-            if (name.startsWith('mcp__'))
+            }
+            if (BUILTIN_TOOLS.has(baseName))
                 continue;
-            if (customTools.has(name))
+            if (baseName.startsWith('mcp__'))
                 continue;
-            results.push({ message: `unknown tool "${name}" in allowed-tools` });
+            if (customTools.has(baseName))
+                continue;
+            results.push({ message: `unknown tool "${baseName}" in allowed-tools` });
         }
         return results;
     };
     /** Custom inline function: checks at least one allowed tool appears in body text. */
     const toolsNotInBodyFn = (targetVal) => {
         const target = targetVal;
-        const allowedTools = target['allowed-tools'];
-        if (!Array.isArray(allowedTools) || allowedTools.length === 0) {
+        const tools = normalizeAllowedTools(target['allowed-tools']);
+        if (tools.length === 0)
             return [];
-        }
         const bodyText = String(target['___body_text'] ?? '');
-        const anyFound = allowedTools.some((tool) => bodyText.includes(String(tool)));
+        const anyFound = tools.some((tool) => {
+            const baseName = extractBaseToolName(tool);
+            return baseName !== '' && bodyText.includes(baseName);
+        });
         if (!anyFound) {
             return [{ message: 'none of the declared allowed-tools appear in the file body' }];
         }
@@ -114,6 +142,17 @@ function buildRules(config) {
         const limit = cfg.limits.max_file_size;
         if (targetVal > limit) {
             return [{ message: `file size ${targetVal} bytes exceeds limit of ${limit} bytes` }];
+        }
+        return [];
+    };
+    /** Custom inline function: checks effort is one of [low, medium, high, max] when present. */
+    const effortInvalidFn = (targetVal) => {
+        if (targetVal === undefined || targetVal === null) {
+            return [];
+        }
+        const allowed = ['low', 'medium', 'high', 'max'];
+        if (!allowed.includes(String(targetVal))) {
+            return [{ message: `effort "${targetVal}" is not valid; expected one of: ${allowed.join(', ')}` }];
         }
         return [];
     };
@@ -224,6 +263,15 @@ function buildRules(config) {
             },
             extensions: level1Extensions,
         },
+        'effort-invalid': {
+            given: '$.effort',
+            severity: 1,
+            message: '{{error}}',
+            then: {
+                function: effortInvalidFn,
+            },
+            extensions: level1Extensions,
+        },
     };
 }
 /**
@@ -238,17 +286,17 @@ function getRulesForFileType(fileType) {
         case 'command':
             return new Set([
                 'required-fields-command', 'non-empty-body',
-                'model-enum', 'unknown-tool', 'tools-not-in-body', 'file-size-limit',
+                'model-enum', 'unknown-tool', 'tools-not-in-body', 'file-size-limit', 'effort-invalid',
             ]);
         case 'agent':
             return new Set([
                 'required-fields-agent', 'non-empty-body',
-                'model-enum', 'file-size-limit',
+                'model-enum', 'file-size-limit', 'effort-invalid',
             ]);
         case 'skill':
             return new Set([
                 'required-fields-skill', 'non-empty-body',
-                'skill-name-format', 'model-enum', 'unknown-tool', 'tools-not-in-body', 'file-size-limit',
+                'skill-name-format', 'model-enum', 'unknown-tool', 'tools-not-in-body', 'file-size-limit', 'effort-invalid',
             ]);
         default:
             return new Set(['non-empty-body']);

@@ -14,6 +14,9 @@ const commandSchema = JSON.parse(
 const agentSchema = JSON.parse(
   readFileSync(resolve(schemasDir, "agent.schema.json"), "utf-8")
 );
+const skillSchema = JSON.parse(
+  readFileSync(resolve(schemasDir, "skill.schema.json"), "utf-8")
+);
 
 // Draft-07 meta-schema for validating our schemas themselves
 const DRAFT_07_META_SCHEMA_URL =
@@ -99,13 +102,18 @@ describe("command.schema.json — optional field types (AC-2)", () => {
     assert.equal(validate(data), false);
   });
 
-  it("allowed-tools as string fails", () => {
+  it("allowed-tools as string passes (space-delimited format)", () => {
     const data = { description: "ok", "allowed-tools": "Read" };
-    assert.equal(validate(data), false);
+    assert.equal(validate(data), true);
   });
 
   it("allowed-tools with non-string items fails", () => {
     const data = { description: "ok", "allowed-tools": [1, 2, 3] };
+    assert.equal(validate(data), false);
+  });
+
+  it("allowed-tools as number fails", () => {
+    const data = { description: "ok", "allowed-tools": 42 };
     assert.equal(validate(data), false);
   });
 
@@ -268,5 +276,30 @@ describe("field names match real skill files", () => {
 
   it("agent schema does NOT have 'allowed-tools' field", () => {
     assert.ok(!("allowed-tools" in agentSchema.properties));
+  });
+
+  it("skill schema has 'allowed-tools' field", () => {
+    assert.ok("allowed-tools" in skillSchema.properties);
+  });
+});
+
+// ─── Skill schema — allowed-tools oneOf validation ───
+
+describe("skill.schema.json — allowed-tools", () => {
+  const validate = ajv.compile(skillSchema);
+
+  it("allowed-tools as array passes", () => {
+    const data = { name: "my-skill", description: "desc", "allowed-tools": ["Read", "Write"] };
+    assert.equal(validate(data), true);
+  });
+
+  it("allowed-tools as string passes (space-delimited format)", () => {
+    const data = { name: "my-skill", description: "desc", "allowed-tools": "Read Write Bash" };
+    assert.equal(validate(data), true);
+  });
+
+  it("allowed-tools as number fails", () => {
+    const data = { name: "my-skill", description: "desc", "allowed-tools": 42 };
+    assert.equal(validate(data), false);
   });
 });
