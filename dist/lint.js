@@ -2,7 +2,8 @@
  * Orchestrator — wires the full lint pipeline end-to-end.
  * CLI args → loadConfig → detectFormat → extractAll → validateFrontmatter + validateManifest → report → exit code
  */
-import { resolve } from 'node:path';
+import { resolve, dirname } from 'node:path';
+import { existsSync, statSync } from 'node:fs';
 import { loadConfig } from './config.js';
 import { detectFormat } from './detect-format.js';
 import { extractAll, extractFile } from './extract.js';
@@ -84,8 +85,39 @@ function applyIgnorePaths(files, ignorePatterns) {
  * Run the lint pipeline and return an exit code.
  * Exit codes: 0 = clean, 1 = errors (or warnings with --strict), 2 = config/git error (caller).
  */
+/**
+ * Resolve the project root directory from paths or cwd.
+ *
+ * When a directory is passed (e.g. `lint .` or `lint test/fixtures/plugin`),
+ * use it directly as rootDir — this is the existing behavior.
+ *
+ * When file paths are passed (e.g. from a pre-commit hook like
+ * `lint commands/foo.md agents/bar.md`), the first path is a file, not
+ * the repo root. In that case, walk up from cwd to find the nearest
+ * directory containing .skill-lint.yaml. Falls back to cwd.
+ */
+function resolveRootDir(firstPath) {
+    if (firstPath) {
+        const resolved = resolve(firstPath);
+        // If it's a directory, use it directly (existing behavior).
+        if (existsSync(resolved) && statSync(resolved).isDirectory()) {
+            return resolved;
+        }
+    }
+    // File path or no path — walk up from cwd to find config.
+    let dir = process.cwd();
+    while (true) {
+        if (existsSync(resolve(dir, '.skill-lint.yaml')))
+            return dir;
+        const parent = dirname(dir);
+        if (parent === dir)
+            break;
+        dir = parent;
+    }
+    return process.cwd();
+}
 export async function runLint(options) {
-    const rootDir = options.paths?.[0] ? resolve(options.paths[0]) : process.cwd();
+    const rootDir = resolveRootDir(options.paths?.[0]);
     const config = loadConfig(rootDir);
     const format = detectFormat(rootDir, config);
     // --changed-only branch: lint only files changed since base ref.

@@ -26,6 +26,10 @@ const skillSchema = loadSchema('skill.schema.json');
 const BUILTIN_TOOLS = new Set([
     'Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'Agent',
     'WebSearch', 'WebFetch', 'AskUserQuestion', 'TodoRead', 'TodoWrite', 'NotebookEdit',
+    'EnterWorktree', 'ExitWorktree', 'EnterPlanMode', 'ExitPlanMode',
+    'TaskCreate', 'TaskGet', 'TaskList', 'TaskUpdate', 'TaskStop', 'TaskOutput',
+    'Skill', 'ToolSearch', 'CronCreate', 'CronDelete', 'CronList', 'RemoteTrigger',
+    'ReadMcpResourceTool', 'ListMcpResourcesTool',
 ]);
 /**
  * Extract the base tool name from a pattern-style declaration.
