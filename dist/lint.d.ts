@@ -12,9 +12,5 @@ export interface LintOptions {
     strict: boolean;
     ratchet: boolean;
 }
-/**
- * Run the lint pipeline and return an exit code.
- * Exit codes: 0 = clean, 1 = errors (or warnings with --strict), 2 = config/git error (caller).
- */
 export declare function runLint(options: LintOptions): Promise<number>;
 //# sourceMappingURL=lint.d.ts.map
