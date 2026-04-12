@@ -379,6 +379,10 @@ import { runLint, runGraph, loadConfig, validateFrontmatter, extractFile } from 
 
 See the [package exports](src/index.ts) for the full API surface.
 
+## Releases
+
+See [GitHub Releases](https://github.com/shinytoyrobots/claude-skills-linter/releases) for version history and release notes.
+
 ## License
 
 MIT
