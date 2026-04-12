@@ -174,6 +174,56 @@ function buildPathToFile(files: ExtractResult[]): Map<string, ExtractResult> {
   return map;
 }
 
+/**
+ * Build a set of skill root directories by scanning for SKILL.md on disk.
+ *
+ * In plugin/multi-plugin format, each skill lives under a directory containing
+ * SKILL.md (e.g., `skills/claude-api/SKILL.md`). Bare references like
+ * `shared/prompt-caching.md` are written relative to this skill root, not
+ * relative to the referencing file's own directory.
+ *
+ * We scan disk rather than the error-free file set because SKILL.md may have
+ * parse errors but still marks the skill root directory.
+ */
+function buildSkillRoots(files: ExtractResult[]): Set<string> {
+  const roots = new Set<string>();
+
+  // First: add directories of all SKILL.md files found in the extract results
+  // (regardless of errors — the file still marks a skill root).
+  for (const file of files) {
+    if (basename(file.filePath) === 'SKILL.md') {
+      roots.add(dirname(file.filePath));
+    }
+  }
+
+  return roots;
+}
+
+/**
+ * Find the skill root directory for a given file by walking up to a known root.
+ *
+ * Returns the directory containing SKILL.md, or undefined if not found
+ * before reaching rootDir.
+ */
+function findSkillRoot(
+  filePath: string,
+  skillRoots: Set<string>,
+  rootDir: string,
+): string | undefined {
+  let dir = dirname(filePath);
+  while (true) {
+    if (skillRoots.has(dir)) {
+      return dir;
+    }
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    // Don't walk above rootDir.
+    if (dir === rootDir) break;
+    dir = parent;
+  }
+  return undefined;
+}
+
 /** Reference extracted from body text, with resolution metadata. */
 interface ResolvedRef {
   raw: string;
@@ -273,6 +323,7 @@ function resolveAllRefs(
   filePathSet: Set<string>,
   pathToFile: Map<string, ExtractResult>,
   index: CanonicalIndex,
+  skillRoots: Set<string>,
 ): ResolvedRef[] {
   const resolved: ResolvedRef[] = [];
   const seenNormalized = new Set<string>();
@@ -315,13 +366,32 @@ function resolveAllRefs(
         });
         seenNormalized.add(cn);
       } else {
-        // Relative path didn't resolve — mark for broken-reference.
-        resolved.push({
-          raw: ref.raw,
-          normalized: ref.raw,
-          isRelative: true,
-        });
-        seenNormalized.add(ref.raw);
+        // File-relative didn't resolve — try skill-root-relative.
+        const skillRoot = findSkillRoot(sourceFilePath, skillRoots, rootDir);
+        const absFromSkillRoot = skillRoot ? resolve(skillRoot, ref.raw) : undefined;
+
+        if (absFromSkillRoot && !escapesRepo(absFromSkillRoot, rootDir) && filePathSet.has(absFromSkillRoot)) {
+          const targetFile = pathToFile.get(absFromSkillRoot);
+          const cn = targetFile
+            ? canonicalName(targetFile.filePath, targetFile.fileType)
+            : ref.raw;
+
+          resolved.push({
+            raw: ref.raw,
+            normalized: cn,
+            isRelative: true,
+            resolvedPath: absFromSkillRoot,
+          });
+          seenNormalized.add(cn);
+        } else {
+          // Neither file-relative nor skill-root-relative resolved — broken.
+          resolved.push({
+            raw: ref.raw,
+            normalized: ref.raw,
+            isRelative: true,
+          });
+          seenNormalized.add(ref.raw);
+        }
       }
     }
   }
@@ -335,7 +405,7 @@ function resolveAllRefs(
       // Skip if already seen (e.g., matched by RELATIVE_REF_PATTERN).
       if (seenNormalized.has(ref.raw)) continue;
 
-      // Try relative resolution first.
+      // Try file-relative resolution first.
       const absPath = resolve(sourceDir, ref.raw);
 
       if (!escapesRepo(absPath, rootDir) && filePathSet.has(absPath)) {
@@ -352,8 +422,24 @@ function resolveAllRefs(
         });
         seenNormalized.add(cn);
       } else {
-        // Canonical fallback: check if the raw ref matches a canonical name.
-        if (index.nameToPath.has(ref.raw)) {
+        // File-relative didn't resolve — try skill-root-relative.
+        const skillRoot = findSkillRoot(sourceFilePath, skillRoots, rootDir);
+        const absFromSkillRoot = skillRoot ? resolve(skillRoot, ref.raw) : undefined;
+        if (absFromSkillRoot && !escapesRepo(absFromSkillRoot, rootDir) && filePathSet.has(absFromSkillRoot)) {
+          const targetFile = pathToFile.get(absFromSkillRoot);
+          const cn = targetFile
+            ? canonicalName(targetFile.filePath, targetFile.fileType)
+            : ref.raw;
+
+          resolved.push({
+            raw: ref.raw,
+            normalized: cn,
+            isRelative: true,
+            resolvedPath: absFromSkillRoot,
+          });
+          seenNormalized.add(cn);
+        } else if (index.nameToPath.has(ref.raw)) {
+          // Canonical fallback.
           resolved.push({
             raw: ref.raw,
             normalized: ref.raw,
@@ -361,7 +447,7 @@ function resolveAllRefs(
           });
           seenNormalized.add(ref.raw);
         } else {
-          // Neither relative nor canonical resolved — broken ref.
+          // No resolution strategy worked — broken ref.
           resolved.push({
             raw: ref.raw,
             normalized: ref.raw,
@@ -405,13 +491,36 @@ function resolveAllRefs(
         // Also add the original normalized form to prevent canonical re-processing.
         seenNormalized.add(ref.normalized);
       } else {
-        // Fall through to canonical resolution.
-        seenNormalized.add(ref.normalized);
-        resolved.push({
-          raw: ref.raw,
-          normalized: ref.normalized,
-          isRelative: false,
-        });
+        // File-relative didn't resolve — try skill-root-relative.
+        const rawPath = ref.raw.startsWith(INSTALLED_PREFIX)
+          ? ref.raw.slice(INSTALLED_PREFIX.length)
+          : ref.raw;
+        const skillRoot = findSkillRoot(sourceFilePath, skillRoots, rootDir);
+        const absFromSkillRoot = skillRoot ? resolve(skillRoot, rawPath) : undefined;
+
+        if (absFromSkillRoot && !escapesRepo(absFromSkillRoot, rootDir) && filePathSet.has(absFromSkillRoot)) {
+          const targetFile = pathToFile.get(absFromSkillRoot);
+          const cn = targetFile
+            ? canonicalName(targetFile.filePath, targetFile.fileType)
+            : ref.normalized;
+
+          resolved.push({
+            raw: ref.raw,
+            normalized: cn,
+            isRelative: true,
+            resolvedPath: absFromSkillRoot,
+          });
+          seenNormalized.add(cn);
+          seenNormalized.add(ref.normalized);
+        } else {
+          // Fall through to canonical resolution.
+          seenNormalized.add(ref.normalized);
+          resolved.push({
+            raw: ref.raw,
+            normalized: ref.normalized,
+            isRelative: false,
+          });
+        }
       }
     }
   } else {
@@ -443,6 +552,7 @@ function detectBrokenRefs(
   rootDir: string | undefined,
   filePathSet: Set<string>,
   pathToFile: Map<string, ExtractResult>,
+  skillRoots: Set<string>,
 ): ValidationResult[] {
   const results: ValidationResult[] = [];
 
@@ -451,7 +561,7 @@ function detectBrokenRefs(
 
     const bodyText = (file.data['___body_text'] as string) ?? '';
     const refs = resolveAllRefs(
-      bodyText, file.filePath, format, rootDir, filePathSet, pathToFile, index,
+      bodyText, file.filePath, format, rootDir, filePathSet, pathToFile, index, skillRoots,
     );
 
     for (const ref of refs) {
@@ -507,6 +617,7 @@ function detectOrphans(
   filePathSet: Set<string>,
   pathToFile: Map<string, ExtractResult>,
   index: CanonicalIndex,
+  skillRoots: Set<string>,
 ): ValidationResult[] {
   const results: ValidationResult[] = [];
 
@@ -527,7 +638,7 @@ function detectOrphans(
 
     const bodyText = (file.data['___body_text'] as string) ?? '';
     const refs = resolveAllRefs(
-      bodyText, file.filePath, format, rootDir, filePathSet, pathToFile, index,
+      bodyText, file.filePath, format, rootDir, filePathSet, pathToFile, index, skillRoots,
     );
     for (const ref of refs) {
       referencedCanonical.add(ref.normalized);
@@ -622,6 +733,7 @@ function detectCycles(
   rootDir: string | undefined,
   filePathSet: Set<string>,
   pathToFile: Map<string, ExtractResult>,
+  skillRoots: Set<string>,
 ): ValidationResult[] {
   const results: ValidationResult[] = [];
 
@@ -637,7 +749,7 @@ function detectCycles(
 
     const bodyText = (file.data['___body_text'] as string) ?? '';
     const refs = resolveAllRefs(
-      bodyText, file.filePath, format, rootDir, filePathSet, pathToFile, index,
+      bodyText, file.filePath, format, rootDir, filePathSet, pathToFile, index, skillRoots,
     );
     const targets = refs
       .map((r) => r.normalized)
@@ -764,15 +876,18 @@ export function validateGraph(
   const filePathSet = buildFilePathSet(files);
   const pathToFile = buildPathToFile(files);
 
+  // Build skill root directories for skill-root-relative reference resolution.
+  const skillRoots = buildSkillRoots(files);
+
   // Name collisions (always checked — these are install-time bugs).
   results.push(...detectNameCollisions(index));
 
   // Broken references.
-  results.push(...detectBrokenRefs(files, index, format, rootDir, filePathSet, pathToFile));
+  results.push(...detectBrokenRefs(files, index, format, rootDir, filePathSet, pathToFile, skillRoots));
 
   // Orphaned files (only if enabled).
   if (config.graph.warn_orphans) {
-    results.push(...detectOrphans(files, format, rootDir, filePathSet, pathToFile, index));
+    results.push(...detectOrphans(files, format, rootDir, filePathSet, pathToFile, index, skillRoots));
   }
 
   // Duplicate content (only if enabled).
@@ -782,7 +897,7 @@ export function validateGraph(
 
   // Cycle detection (only if enabled).
   if (config.graph.detect_cycles) {
-    results.push(...detectCycles(files, index, format, rootDir, filePathSet, pathToFile));
+    results.push(...detectCycles(files, index, format, rootDir, filePathSet, pathToFile, skillRoots));
   }
 
   return results;

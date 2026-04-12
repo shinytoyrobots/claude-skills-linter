@@ -338,6 +338,124 @@ describe('story-029: bare relative path resolution in plugin format', () => {
 });
 
 // =============================================================================
+// Skill-root-relative resolution (Anthropic repo pattern)
+// =============================================================================
+
+describe('skill-root-relative resolution', () => {
+  it('bare ref from nested subdir resolves relative to SKILL.md parent', () => {
+    // Pattern: java/claude-api.md references shared/prompt-caching.md
+    // File-relative would look for java/shared/prompt-caching.md (wrong).
+    // Skill-root-relative looks for skills/deploy/shared/prompt-caching.md (correct).
+    const skill = makeResult({
+      filePath: '/repo/skills/deploy/SKILL.md',
+      fileType: 'skill',
+    });
+    const nested = makeResult({
+      filePath: '/repo/skills/deploy/java/claude-api.md',
+      fileType: 'unknown',
+      bodyText: 'See shared/prompt-caching.md for caching patterns.',
+    });
+    const shared = makeResult({
+      filePath: '/repo/skills/deploy/shared/prompt-caching.md',
+      fileType: 'context',
+    });
+
+    const config = makeConfig({ format: 'plugin' });
+    const results = validateGraph([skill, nested, shared], config, '/repo');
+    const broken = results.filter((r) => r.rule === 'broken-reference');
+
+    assert.equal(broken.length, 0, 'shared/prompt-caching.md should resolve via skill root');
+  });
+
+  it('bare ref from shared/ subdir to sibling shared/ file resolves via skill root', () => {
+    // Pattern: shared/onboarding.md references shared/core.md
+    // File-relative would look for shared/shared/core.md (wrong).
+    // Skill-root-relative looks for skills/deploy/shared/core.md (correct).
+    const skill = makeResult({
+      filePath: '/repo/skills/deploy/SKILL.md',
+      fileType: 'skill',
+    });
+    const onboarding = makeResult({
+      filePath: '/repo/skills/deploy/shared/onboarding.md',
+      fileType: 'context',
+      bodyText: 'Read shared/core.md for core concepts.',
+    });
+    const core = makeResult({
+      filePath: '/repo/skills/deploy/shared/core.md',
+      fileType: 'context',
+    });
+
+    const config = makeConfig({ format: 'plugin' });
+    const results = validateGraph([skill, onboarding, core], config, '/repo');
+    const broken = results.filter((r) => r.rule === 'broken-reference');
+
+    assert.equal(broken.length, 0, 'shared/core.md should resolve via skill root');
+  });
+
+  it('skill-root resolution still reports broken when target does not exist', () => {
+    const skill = makeResult({
+      filePath: '/repo/skills/deploy/SKILL.md',
+      fileType: 'skill',
+    });
+    const nested = makeResult({
+      filePath: '/repo/skills/deploy/java/claude-api.md',
+      fileType: 'unknown',
+      bodyText: 'See shared/nonexistent.md for details.',
+    });
+
+    const config = makeConfig({ format: 'plugin' });
+    const results = validateGraph([skill, nested], config, '/repo');
+    const broken = results.filter((r) => r.rule === 'broken-reference');
+
+    assert.equal(broken.length, 1, 'Nonexistent file should still be reported as broken');
+  });
+
+  it('SKILL.md with parse errors still marks the skill root', () => {
+    // SKILL.md has errors but should still be used to identify the skill root.
+    const skill = makeResult({
+      filePath: '/repo/skills/deploy/SKILL.md',
+      fileType: 'skill',
+      errors: [{ message: 'YAML parse error', filePath: '/repo/skills/deploy/SKILL.md' }],
+    });
+    const nested = makeResult({
+      filePath: '/repo/skills/deploy/java/claude-api.md',
+      fileType: 'unknown',
+      bodyText: 'See shared/prompt-caching.md for caching.',
+    });
+    const shared = makeResult({
+      filePath: '/repo/skills/deploy/shared/prompt-caching.md',
+      fileType: 'context',
+    });
+
+    const config = makeConfig({ format: 'plugin' });
+    const results = validateGraph([skill, nested, shared], config, '/repo');
+    const broken = results.filter((r) => r.rule === 'broken-reference');
+
+    assert.equal(broken.length, 0, 'Should resolve even when SKILL.md has parse errors');
+  });
+
+  it('file-relative resolution is preferred over skill-root resolution', () => {
+    // If shared/foo.md exists both relative to the file AND relative to skill root,
+    // the file-relative version should win (it's checked first).
+    const skill = makeResult({
+      filePath: '/repo/skills/deploy/SKILL.md',
+      fileType: 'skill',
+      bodyText: 'See shared/foo.md for details.',
+    });
+    const localShared = makeResult({
+      filePath: '/repo/skills/deploy/shared/foo.md',
+      fileType: 'context',
+    });
+
+    const config = makeConfig({ format: 'plugin' });
+    const results = validateGraph([skill, localShared], config, '/repo');
+    const broken = results.filter((r) => r.rule === 'broken-reference');
+
+    assert.equal(broken.length, 0, 'Should resolve via file-relative (same as skill root here)');
+  });
+});
+
+// =============================================================================
 // All three patterns resolve together
 // =============================================================================
 
