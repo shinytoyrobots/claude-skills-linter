@@ -29,10 +29,10 @@ claude-skill-lint enforces the structural foundation. `/te-review` (included in 
 
 We ran te-review against itself. It scored 20/24. The main finding: the skill didn't constrain its own output the way it tells others to. After adding "top 5 findings per category" and "each subagent returns top 10 findings only," estimated output token savings on large suite reviews dropped by ~50%. The tool practices what it preaches.
 
-Install the deep audit skill:
+Install the deep audit skill from the [repository](https://github.com/shinytoyrobots/claude-skills-linter/blob/main/skills/te-review.md):
 
 ```bash
-cp node_modules/claude-skill-lint/skills/te-review.md ~/.claude/commands/te-review.md
+curl -o ~/.claude/commands/te-review.md https://raw.githubusercontent.com/shinytoyrobots/claude-skills-linter/main/skills/te-review.md
 ```
 
 Then in any Claude Code session:

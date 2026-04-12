@@ -3,6 +3,14 @@
   "version": "0.3.0",
   "description": "A CLI tool that validates Claude Code skill files for structural correctness",
   "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "bin": {
     "claude-skill-lint": "bin/cli.js",
     "skill-lint": "bin/cli.js"
@@ -11,13 +19,13 @@
     "dist/",
     "bin/",
     "schemas/",
-    "skills/",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "tsc",
-    "test": "tsx --test test/*.test.ts"
+    "test": "tsx --test test/*.test.ts",
+    "prepublishOnly": "npm run build && npm test"
   },
   "keywords": [
     "claude",
