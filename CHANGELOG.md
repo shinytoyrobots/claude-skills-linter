@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.1] - 2026-04-12
+
+### Changed
+
+- CI now auto-creates GitHub Releases with changelog notes after npm publish
+- Added Releases link to README for npm page visitors
+
 ## [0.5.0] - 2026-04-12
 
 Skill-root-relative reference resolution, CI documentation, and programmatic API.
