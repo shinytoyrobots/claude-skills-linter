@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-04-12
+
+Skill-root-relative reference resolution, CI documentation, and programmatic API.
+
+### Added
+
+- **Skill-root-relative resolution** — bare references like `shared/prompt-caching.md` from nested subdirectories now resolve relative to the nearest `SKILL.md` parent directory. Eliminates false-positive broken-reference errors in repos where files cross-reference siblings by skill-root-relative paths (the pattern used by Anthropic's official skills repo).
+- **Programmatic API** — all core functions exported via package entry point (`import { runLint, validateFrontmatter } from 'claude-skill-lint'`)
+- **CI workflow** — GitHub Actions with tests on Node 20/22 and automated npm publish on version tags
+- **CHANGELOG** — version history for npm consumers
+
+### Fixed
+
+- SKILL.md files with YAML parse errors no longer prevent skill root discovery — they still mark the directory boundary for reference resolution
+- README te-review install instruction now points to GitHub raw URL (not the npm package, which doesn't include it)
+
+### Changed
+
+- `dist/` no longer tracked in git — built in CI and at publish time
+- README CI section now documents exit codes, `--strict` behavior, and when warnings fail the build
+
 ## [0.3.0] - 2026-04-12
 
 First npm release. Full structural linting and graph validation for Claude Code skills.

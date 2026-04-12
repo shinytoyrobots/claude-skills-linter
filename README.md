@@ -41,10 +41,10 @@ The headline: `inv-output-conventions.md` was renamed to `inv-output-patterns.md
 
 ```
 $ claude-skill-lint graph ~/Development/anthropic-skills/
-✖ 19 errors and 10 warnings in 26 files (63 files checked)
+✖ 14 errors and 24 warnings in 37 files (72 files checked)
 ```
 
-Name-collision findings in the `claude-api` skill — five language-specific `claude-api.md` files (PHP, Java, Ruby, Go, C#) all resolve to the same canonical name. Broken references to `shared/tool-use-concepts.md` and `shared/live-sources.md` — files that don't exist. Orphaned theme files in `theme-factory` (loaded dynamically, not via static references). Legitimate structural observations, not false positives.
+Name collisions in the `claude-api` skill — five language-specific `claude-api.md` files (PHP, Java, Ruby, Go, C#) all resolve to the same canonical name, plus Python/TypeScript duplicates for `tool-use.md`, `streaming.md`, `files-api.md`, and `batches.md`. One genuinely broken `./README.md` reference. Orphaned theme files in `theme-factory` (loaded dynamically, not via static references) and shared context files referenced only from other context files. All legitimate structural findings.
 
 ### Against a multi-plugin production repo
 
@@ -310,6 +310,16 @@ graph:
 
 ## CI Integration
 
+### Exit Codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | Clean — no errors (warnings don't fail by default) |
+| `1` | Errors found (or warnings with `--strict`) |
+| `2` | Configuration or git error |
+
+By default, **warnings are informational** — orphaned files and minor issues appear as annotations but don't fail the build. Add `--strict` to treat warnings as errors and fail on any finding.
+
 ### GitHub Actions
 
 ```yaml
@@ -340,6 +350,13 @@ jobs:
         run: claude-skill-lint lint . --ratchet --base origin/${{ github.base_ref }} --format github
 ```
 
+To fail on warnings too, add `--strict` to any step:
+
+```yaml
+      - name: Graph validation (strict)
+        run: claude-skill-lint graph . --format github --strict
+```
+
 `--format github` produces annotations that appear inline on PR diffs.
 
 ### Pre-commit Hook
@@ -351,6 +368,16 @@ if [ -n "$STAGED" ]; then
   npx claude-skill-lint lint $STAGED --level 1
 fi
 ```
+
+## Programmatic API
+
+All core functions are exported for integration into custom tooling:
+
+```ts
+import { runLint, runGraph, loadConfig, validateFrontmatter, extractFile } from 'claude-skill-lint';
+```
+
+See the [package exports](src/index.ts) for the full API surface.
 
 ## License
 
