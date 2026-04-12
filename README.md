@@ -16,41 +16,15 @@ Caught in under two seconds. No LLM calls. Deterministic.
 
 "Tolerate" is not "work correctly."
 
-## Two Layers
+## Companion: /te-review
 
-| | `claude-skill-lint` | `/te-review` |
-|-|-------------|-------------|
-| **What** | Structural validation | Token efficiency audit |
-| **Speed** | <2s, every PR | ~60s, on demand |
-| **Approach** | Deterministic CI — no LLM | LLM-powered deep analysis |
-| **Catches** | Broken refs, orphans, cycles, collisions, parse errors, size violations, quality regressions | Redundant content, output format waste, instruction bloat, model routing, architecture-level optimization |
+This repo also includes [`/te-review`](skills/te-review.md), an LLM-powered deep audit skill that goes beyond structural validation — analyzing token efficiency, redundancy, output constraints, and instruction quality. It produces a scored assessment (0-24) with estimated token savings per fix.
 
-claude-skill-lint enforces the structural foundation. `/te-review` (included in [`skills/te-review.md`](skills/te-review.md)) goes deeper — four-pass analysis across architecture, efficiency, and instruction quality, producing a scored assessment (0-24) with a prioritized optimization plan and estimated token savings per fix.
-
-We ran te-review against itself. It scored 20/24. The main finding: the skill didn't constrain its own output the way it tells others to. After adding "top 5 findings per category" and "each subagent returns top 10 findings only," estimated output token savings on large suite reviews dropped by ~50%. The tool practices what it preaches.
-
-Install the deep audit skill from the [repository](https://github.com/shinytoyrobots/claude-skills-linter/blob/main/skills/te-review.md):
+claude-skill-lint catches structural bugs deterministically in CI. `/te-review` is an on-demand complement for deeper optimization.
 
 ```bash
 curl -o ~/.claude/commands/te-review.md https://raw.githubusercontent.com/shinytoyrobots/claude-skills-linter/main/skills/te-review.md
 ```
-
-Then in any Claude Code session:
-
-```
-/te-review suite                    # Full suite audit (scored 0-24)
-/te-review audit my-skill           # Single skill deep dive
-/te-review compare old.md new.md    # Before/after token impact
-```
-
-### What te-review checks
-
-Four sequential passes, each producing up to 5 findings per severity level:
-
-1. **Structural Audit** — CLAUDE.md bloat, unused tool declarations, reference depth, subagent model routing, file size
-2. **Redundancy Detection** — skill-context overlap, cross-skill duplication, CLAUDE.md-skill overlap. High-fanout context files are flagged as highest-ROI optimization targets.
-3. **Output Efficiency** — missing format constraints, missing conciseness directives, unbounded output sections, prose where structured would suffice. Output tokens cost 5x input — this pass often finds the biggest savings.
-4. **Instruction Quality** — motivational fluff, politeness tokens, filler phrases, default-behavior instructions, conflicting constraints, emphasis overuse
 
 ## What It Actually Found
 
