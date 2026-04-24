@@ -62,7 +62,6 @@ describe('resolveLevel', () => {
       assert.deepEqual(level, { kind: 'out-of-range' });
     });
 
-
     it('file quality_level overrides directory level', () => {
       const config = makeConfig({
         levels: { 'commands': 1 },
@@ -74,7 +73,7 @@ describe('resolveLevel', () => {
     it('file quality_level overrides default_level', () => {
       const config = makeConfig({ default_level: 1 });
       const level = resolveLevel('/project/.claude/commands/foo.md', { quality_level: 0 }, config);
-      assert.equal(level, 0);
+      assert.deepEqual(level, { kind: 'explicit', level: 0 });
     });
   });
 
@@ -84,7 +83,7 @@ describe('resolveLevel', () => {
         levels: { 'commands': 2 },
       });
       const level = resolveLevel('/project/.claude/commands/foo.md', {}, config);
-      assert.equal(level, 2);
+      assert.deepEqual(level, { kind: 'explicit', level: 2 });
     });
 
     it('matches directory prefix with trailing slash', () => {
@@ -92,7 +91,7 @@ describe('resolveLevel', () => {
         levels: { 'commands/': 2 },
       });
       const level = resolveLevel('/project/.claude/commands/foo.md', {}, config);
-      assert.equal(level, 2);
+      assert.deepEqual(level, { kind: 'explicit', level: 2 });
     });
 
     it('matches nested directory prefix', () => {
@@ -100,7 +99,7 @@ describe('resolveLevel', () => {
         levels: { 'commands/sub': 3 },
       });
       const level = resolveLevel('/project/.claude/commands/sub/foo.md', {}, config);
-      assert.equal(level, 3);
+      assert.deepEqual(level, { kind: 'explicit', level: 3 });
     });
 
     it('longest prefix wins', () => {
@@ -112,7 +111,7 @@ describe('resolveLevel', () => {
         },
       });
       const level = resolveLevel('/project/.claude/commands/sub/deep/foo.md', {}, config);
-      assert.equal(level, 3);
+      assert.deepEqual(level, { kind: 'explicit', level: 3 });
     });
 
     it('does not match partial directory names', () => {
@@ -124,7 +123,7 @@ describe('resolveLevel', () => {
       assert.deepEqual(level, { kind: 'default' }); // Falls through to default
     });
 
-    it('no match returns -2 (default fallback)', () => {
+    it('no match returns default fallback', () => {
       const config = makeConfig({
         levels: { 'agents': 2 },
       });
@@ -132,7 +131,7 @@ describe('resolveLevel', () => {
       assert.deepEqual(level, { kind: 'default' });
     });
 
-    it('empty levels object returns -2', () => {
+    it('empty levels object returns default', () => {
       const config = makeConfig({ levels: {} });
       const level = resolveLevel('/project/.claude/commands/foo.md', {}, config);
       assert.deepEqual(level, { kind: 'default' });
@@ -140,13 +139,13 @@ describe('resolveLevel', () => {
   });
 
   describe('Priority 3+4: Default fallback', () => {
-    it('returns -2 when no file/dir override and default_level is set', () => {
+    it('returns default when no file/dir override and default_level is set', () => {
       const config = makeConfig({ default_level: 1 });
       const level = resolveLevel('/project/.claude/commands/foo.md', {}, config);
       assert.deepEqual(level, { kind: 'default' });
     });
 
-    it('returns -2 when no config overrides exist at all', () => {
+    it('returns default when no config overrides exist at all', () => {
       const config = makeConfig();
       const level = resolveLevel('/project/.claude/commands/foo.md', {}, config);
       assert.deepEqual(level, { kind: 'default' });
