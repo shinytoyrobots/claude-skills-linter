@@ -143,12 +143,12 @@ function rawQualityLevel(frontmatter: Record<string, unknown>): number {
  * @param config - Config with `skills_root`.
  * @returns Validation results for any regressions found.
  */
-export async function checkRatchet(
+export function checkRatchet(
   files: ExtractResult[],
   baseRef: string,
   gitRoot: string,
   _config: Pick<Config, 'skills_root'>,
-): Promise<ValidationResult[]> {
+): ValidationResult[] {
   const results: ValidationResult[] = [];
 
   for (const file of files) {
