@@ -30,32 +30,37 @@ const MAX_LEVEL = 3;
  *          - -1: out-of-range quality_level (caller should warn and use default)
  *          - -2: no explicit override found (fell back to default_level or hardcoded 0)
  */
+export type LevelResult =
+  | { kind: 'explicit'; level: number }
+  | { kind: 'out-of-range' }
+  | { kind: 'default' };
+
 export function resolveLevel(
   filePath: string,
   frontmatter: Record<string, unknown>,
   config: Pick<Config, 'default_level' | 'levels' | 'skills_root'>,
-): number {
+): LevelResult {
   // Priority 1: File frontmatter quality_level
   const fileLevel = frontmatter['quality_level'];
   if (fileLevel !== undefined && fileLevel !== null) {
     const parsed = Number(fileLevel);
     if (Number.isInteger(parsed) && parsed >= MIN_LEVEL && parsed <= MAX_LEVEL) {
-      return parsed;
+      return { kind: 'explicit', level: parsed };
     }
-    // Out of range — signal to caller with -1
-    return -1;
+    // Out of range — signal to caller with 'out-of-range'
+    return { kind: 'out-of-range' };
   }
 
   // Priority 2: Directory-level override from config.levels (longest prefix wins)
   const dirLevel = matchDirectoryLevel(filePath, config);
   if (dirLevel !== undefined) {
-    return dirLevel;
+    return { kind: 'explicit', level: dirLevel };
   }
 
   // Priority 3+4: No explicit file or directory override.
-  // Return -2 to signal that the caller should use cliLevel directly
+  // Return 'default' to signal that the caller should use cliLevel directly
   // (preserving backward compatibility with the global --level flag).
-  return -2;
+  return { kind: 'default' };
 }
 
 /**
