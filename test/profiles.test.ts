@@ -68,7 +68,7 @@ describe('resolveLevel', () => {
         levels: { 'commands': 1 },
       });
       const level = resolveLevel('/project/.claude/commands/foo.md', { quality_level: 2 }, config);
-      assert.equal(level, 2);
+      assert.deepEqual(level, { kind: 'explicit', level: 2 });
     });
 
     it('file quality_level overrides default_level', () => {
@@ -129,13 +129,13 @@ describe('resolveLevel', () => {
         levels: { 'agents': 2 },
       });
       const level = resolveLevel('/project/.claude/commands/foo.md', {}, config);
-      assert.equal(level, -2);
+      assert.deepEqual(level, { kind: 'default' });
     });
 
     it('empty levels object returns -2', () => {
       const config = makeConfig({ levels: {} });
       const level = resolveLevel('/project/.claude/commands/foo.md', {}, config);
-      assert.equal(level, -2);
+      assert.deepEqual(level, { kind: 'default' });
     });
   });
 
@@ -143,13 +143,13 @@ describe('resolveLevel', () => {
     it('returns -2 when no file/dir override and default_level is set', () => {
       const config = makeConfig({ default_level: 1 });
       const level = resolveLevel('/project/.claude/commands/foo.md', {}, config);
-      assert.equal(level, -2);
+      assert.deepEqual(level, { kind: 'default' });
     });
 
     it('returns -2 when no config overrides exist at all', () => {
       const config = makeConfig();
       const level = resolveLevel('/project/.claude/commands/foo.md', {}, config);
-      assert.equal(level, -2);
+      assert.deepEqual(level, { kind: 'default' });
     });
   });
 });
