@@ -385,28 +385,24 @@ export async function validateFrontmatter(
     }
 
     // Resolve per-file quality level.
-    // resolveLevel returns:
-    //   -1  → out-of-range quality_level (warn, fall back to cliLevel)
-    //   -2  → no file/dir override, used default_level (cliLevel wins)
-    //   0-3 → explicit file or directory override
     const resolvedLevel = resolveLevel(result.filePath, result.data, profileConfig);
 
     let effectiveLevel: number;
-    if (resolvedLevel === -1) {
+    if (resolvedLevel.kind === 'out-of-range') {
       // Out-of-range quality_level — warn and use default.
       const badValue = result.data['quality_level'];
       process.stderr.write(
         `warning: ${result.filePath}: quality_level ${badValue} is out of range (0-3), using default_level ${profileConfig.default_level}\n`,
       );
       effectiveLevel = Math.max(profileConfig.default_level, cliLevel);
-    } else if (resolvedLevel === -2) {
+    } else if (resolvedLevel.kind === 'default') {
       // No explicit file or directory override — cliLevel is the effective level.
       // This preserves backward compatibility: when no files declare quality_level,
       // the global --level flag behavior is unchanged.
       effectiveLevel = cliLevel;
     } else {
-      // Explicit file or directory level — apply max(resolved, cliLevel).
-      effectiveLevel = Math.max(resolvedLevel, cliLevel);
+      // Explicit file or directory level — apply max(resolved.level, cliLevel).
+      effectiveLevel = Math.max(resolvedLevel.level, cliLevel);
     }
 
     // Determine which rules apply to this file type.
