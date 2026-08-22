@@ -193,8 +193,11 @@ export async function extractAll(
   );
   const files: string[] = allMatched.flat();
 
-  // Deduplicate in case patterns overlap.
-  const unique = [...new Set(files)];
+  // Deduplicate in case patterns overlap, and sort for a stable processing order.
+  // glob returns filesystem order, which can vary run-to-run; sorting keeps the graph
+  // engine's "first-seen" (duplicate-content, name-collision) and cycle-representative
+  // reporting deterministic (INV-2).
+  const unique = [...new Set(files)].sort();
 
   return unique.map((f) => extractFile(f));
 }

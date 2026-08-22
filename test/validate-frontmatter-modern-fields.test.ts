@@ -46,6 +46,7 @@ describe('story-034: modern Claude Code frontmatter fields', () => {
   it('AC-1: context field accepted as valid string (skill)', async () => {
     const input = makeResult({
       fileType: 'skill',
+      filePath: '/test/my-skill/SKILL.md',
       data: { name: 'my-skill', description: 'A skill', context: 'fork' },
     });
     const results = await validateFrontmatter([input], 1);
@@ -74,6 +75,7 @@ describe('story-034: modern Claude Code frontmatter fields', () => {
   it('AC-2: agent: "general-purpose" accepted (skill)', async () => {
     const input = makeResult({
       fileType: 'skill',
+      filePath: '/test/my-skill/SKILL.md',
       data: { name: 'my-skill', description: 'A skill', agent: 'general-purpose' },
     });
     const results = await validateFrontmatter([input], 1);
@@ -174,6 +176,7 @@ describe('story-034: modern Claude Code frontmatter fields', () => {
   it('AC-4: hooks object accepted (skill)', async () => {
     const input = makeResult({
       fileType: 'skill',
+      filePath: '/test/my-skill/SKILL.md',
       data: { name: 'my-skill', description: 'A skill', hooks: { before: 'check' } },
     });
     const results = await validateFrontmatter([input], 1);
@@ -212,6 +215,7 @@ describe('story-034: modern Claude Code frontmatter fields', () => {
   it('AC-6: metadata object accepted (skill)', async () => {
     const input = makeResult({
       fileType: 'skill',
+      filePath: '/test/my-skill/SKILL.md',
       data: { name: 'my-skill', description: 'A skill', metadata: { version: '1.0', tags: ['util'] } },
     });
     const results = await validateFrontmatter([input], 1);

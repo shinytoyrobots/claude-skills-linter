@@ -92,46 +92,44 @@ describe('SKILL.md frontmatter validation (story-017)', () => {
     assert.equal(results.length, 0, `Expected 0 errors, got ${results.length}: ${JSON.stringify(results)}`);
   });
 
-  // AC-4b: Invalid type for invocable (string instead of boolean) reports error.
-  it('AC-4b: invocable with string value reports required-fields-skill error', async () => {
+  // SR-015: boolean fields accept the extended truthy/falsy forms (v2.1.218+) without a
+  // type error. (Supersedes the pre-SR-015 tests that expected `no`/`1` to error, and the
+  // test for the spurious `invocable` field, which was removed from the schema.)
+  it('SR-015: disable-model-invocation accepts the falsy form "no"', async () => {
     const input = makeSkillResult({
       data: {
         name: 'my-skill',
-        description: 'A skill with bad invocable',
-        invocable: 'yes',
-      },
-    });
-
-    const results = await validateFrontmatter([input], 0);
-    assert.ok(results.length > 0, 'Expected at least one error');
-
-    const typeError = results.find((r) => r.rule === 'required-fields-skill');
-    assert.ok(typeError, `Expected a required-fields-skill error, got: ${JSON.stringify(results)}`);
-    assert.equal(typeError.severity, 'error');
-  });
-
-  // AC-4b: Invalid type for disable-model-invocation reports error.
-  it('AC-4b: disable-model-invocation with string value reports error', async () => {
-    const input = makeSkillResult({
-      data: {
-        name: 'my-skill',
-        description: 'A skill with bad disable-model-invocation',
+        description: 'A skill using an extended boolean form',
         'disable-model-invocation': 'no',
       },
     });
 
     const results = await validateFrontmatter([input], 0);
     const typeError = results.find((r) => r.rule === 'required-fields-skill');
-    assert.ok(typeError, `Expected a required-fields-skill error, got: ${JSON.stringify(results)}`);
+    assert.ok(!typeError, `Expected no type error for "no", got: ${JSON.stringify(results)}`);
   });
 
-  // AC-4b: Invalid type for user-invocable reports error.
-  it('AC-4b: user-invocable with number value reports error', async () => {
+  it('SR-015: user-invocable accepts the numeric form 1', async () => {
     const input = makeSkillResult({
       data: {
         name: 'my-skill',
-        description: 'A skill with bad user-invocable',
+        description: 'A skill using a numeric boolean form',
         'user-invocable': 1,
+      },
+    });
+
+    const results = await validateFrontmatter([input], 0);
+    const typeError = results.find((r) => r.rule === 'required-fields-skill');
+    assert.ok(!typeError, `Expected no type error for 1, got: ${JSON.stringify(results)}`);
+  });
+
+  // A boolean field with a value outside the accepted set still reports a type error.
+  it('SR-015: disable-model-invocation with an unrecognized value still errors', async () => {
+    const input = makeSkillResult({
+      data: {
+        name: 'my-skill',
+        description: 'A skill with a genuinely invalid boolean value',
+        'disable-model-invocation': 'banana',
       },
     });
 

@@ -50,6 +50,11 @@ const cli = yargs(hideBin(process.argv))
           describe: 'Enforce anti-regression (never go below current level)',
           type: 'boolean',
           default: false,
+        })
+        .option('portable', {
+          describe: 'Flag Claude-Code-only frontmatter fields not portable to the Agent Skills spec (claude.ai / Skills API)',
+          type: 'boolean',
+          default: false,
         }),
     async (argv) => {
       try {
@@ -61,6 +66,7 @@ const cli = yargs(hideBin(process.argv))
           format: argv.format,
           strict: argv.strict,
           ratchet: argv.ratchet,
+          portable: argv.portable,
         });
         process.exit(exitCode);
       } catch (err) {

@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+Skills architecture currency update — re-anchors the linter to the 2026 Agent Skills spec. Verified against three real repos (anthropics/skills, a 958-file legacy suite, a multi-plugin production repo, ~1,150 skill files total) with zero new false-positive errors.
+
+### Added
+
+- **Progressive-disclosure reference tracking** — `graph` now resolves references to bundled resources from `SKILL.md` bodies: markdown links (`[text](path)`), bare relative paths, non-`.md` files (`scripts/*.sh`, `references/*.txt`, assets), `${CLAUDE_SKILL_DIR}` / `${CLAUDE_PROJECT_DIR}` variables, and script paths inside `allowed-tools: Bash(...)` grants. Fenced code blocks are stripped first; runtime-output files and glob patterns are not existence-checked (false-positive guards).
+- **`--portable` mode** — flags Claude-Code-only frontmatter fields that are not portable to the Agent Skills spec (claude.ai upload / Skills API), which accepts only `name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`.
+- **`name-dir-mismatch`** warning — when a skill's frontmatter `name` differs from its directory, naming which identifier governs invocation in the detected format (surfaces on both `lint` and `graph`).
+- **`description-budget`** warning — when `description` + `when_to_use` exceeds the 1536-character listing budget.
+- Schema: recognizes current frontmatter fields `when_to_use`, `arguments`, `disallowed-tools`, `background`, `paths`, `shell`, `license`, `model`.
+
+### Fixed
+
+- **False positives on valid 2026 skills** (the priority): `effort: xhigh` now accepted; `model: inherit` and full model IDs (`claude-*`, `us.anthropic.*`) accepted; refreshed the built-in tool registry (dropped retired `TaskCreate`/`TaskGet`/`TaskList`/`TaskUpdate`, added `SendMessage`, `Monitor`, `SlashCommand`, `ScheduleWakeup`, and others).
+- Boolean frontmatter fields (`disable-model-invocation`, `user-invocable`, `background`) accept the extended forms `yes`/`no`/`on`/`off`/`1`/`0` (v2.1.218+).
+- `allowed-tools` string parsing no longer splits inside a `Bash(...)` pattern that contains spaces (e.g. `Bash(git status:*)`).
+- File discovery is now sorted, making `duplicate-content`, `name-collision`, and `reference-cycle` reporting deterministic.
+
+### Removed
+
+- The spurious `invocable` frontmatter field (not part of the spec; `user-invocable` and `disable-model-invocation` are the real fields).
+
 ## [0.5.1] - 2026-04-12
 
 ### Changed

@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import spectralCore from '@stoplight/spectral-core';
 import spectralFunctions from '@stoplight/spectral-functions';
-import type { Config, ExtractResult, ValidationResult } from './types.js';
+import type { Config, ExtractResult, RepoFormat, ValidationResult } from './types.js';
 import { resolveLevel } from './profiles.js';
 
 const { Spectral } = spectralCore;
@@ -29,14 +29,23 @@ const commandSchema = loadSchema('command.schema.json');
 const agentSchema = loadSchema('agent.schema.json');
 const skillSchema = loadSchema('skill.schema.json');
 
-/** Known built-in Claude Code tools (PascalCase, case-sensitive). */
+/**
+ * Known built-in Claude Code tools (PascalCase, case-sensitive).
+ *
+ * The roster moves faster than this package's release cadence, so `unknown-tool`
+ * stays a warning (never an error) — a stale allow-list must not false-positive a
+ * skill that declares a newer built-in. Refreshed 2026-08 to the current roster;
+ * the retired Task{Create,Get,List,Update} family is intentionally dropped.
+ */
 const BUILTIN_TOOLS: ReadonlySet<string> = new Set([
   'Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'Agent',
   'WebSearch', 'WebFetch', 'AskUserQuestion', 'TodoRead', 'TodoWrite', 'NotebookEdit',
   'EnterWorktree', 'ExitWorktree', 'EnterPlanMode', 'ExitPlanMode',
-  'TaskCreate', 'TaskGet', 'TaskList', 'TaskUpdate', 'TaskStop', 'TaskOutput',
-  'Skill', 'ToolSearch', 'CronCreate', 'CronDelete', 'CronList', 'RemoteTrigger',
-  'ReadMcpResourceTool', 'ListMcpResourcesTool',
+  'Task', 'TaskStop', 'TaskOutput',
+  'Skill', 'ToolSearch', 'SlashCommand', 'SendMessage', 'Monitor', 'ScheduleWakeup',
+  'BashOutput', 'KillShell', 'Artifact', 'ReportFindings',
+  'CronCreate', 'CronDelete', 'CronList', 'RemoteTrigger', 'PushNotification',
+  'ReadMcpResourceTool', 'ListMcpResourcesTool', 'ReadMcpResourceDirTool',
 ]);
 
 /**
@@ -50,13 +59,119 @@ export function extractBaseToolName(tool: string): string {
 }
 
 /**
+ * Tokenize an `allowed-tools` string into individual grants.
+ *
+ * A single linear paren-depth scan (SR-016): whitespace and commas are delimiters
+ * only at paren-depth 0, so a `Bash(...)`/`Tool(...)` pattern whose argument contains
+ * spaces (e.g. `Bash(git status:*)`) stays one token instead of being split into a
+ * bogus tool. Linear-time by construction — no backtracking, satisfies INV-4 (no ReDoS).
+ */
+export function tokenizeAllowedTools(value: string): string[] {
+  const tokens: string[] = [];
+  let current = '';
+  let depth = 0;
+  for (const ch of value) {
+    if (ch === '(') {
+      depth++;
+      current += ch;
+    } else if (ch === ')') {
+      if (depth > 0) depth--;
+      current += ch;
+    } else if ((ch === ',' || /\s/.test(ch)) && depth === 0) {
+      if (current) {
+        tokens.push(current);
+        current = '';
+      }
+    } else {
+      current += ch;
+    }
+  }
+  if (current) tokens.push(current);
+  return tokens;
+}
+
+/**
  * Normalize allowed-tools to an array of strings.
- * Handles both array format and space-delimited string format.
+ * Handles both array format and comma/space-delimited string format.
  */
 function normalizeAllowedTools(value: unknown): string[] {
   if (Array.isArray(value)) return value.map(String);
-  if (typeof value === 'string') return value.split(/\s+/).filter(Boolean);
+  if (typeof value === 'string') return tokenizeAllowedTools(value).filter(Boolean);
   return [];
+}
+
+/** Boolean-typed frontmatter fields that accept the extended truthy/falsy forms (SR-015). */
+const BOOLEAN_TOLERANT_FIELDS = ['disable-model-invocation', 'user-invocable', 'background'];
+const BOOLEAN_TOKENS = new Set(['true', 'false', 'yes', 'no', 'on', 'off', '1', '0']);
+
+/**
+ * SR-015: coerce accepted string/number forms of boolean fields to real booleans
+ * (in place) so schema type-checking does not false-positive on `off`/`yes`/`1`/etc.
+ * (v2.1.218+). A value NOT in the accepted set is left untouched, so a genuinely
+ * invalid value (e.g. `banana`) still fails schema validation.
+ */
+function coerceBooleanFields(data: Record<string, unknown>): void {
+  for (const field of BOOLEAN_TOLERANT_FIELDS) {
+    const v = data[field];
+    if (typeof v === 'boolean') continue;
+    if (typeof v === 'string' && BOOLEAN_TOKENS.has(v.toLowerCase())) {
+      data[field] = ['true', 'yes', 'on', '1'].includes(v.toLowerCase());
+    } else if (typeof v === 'number' && (v === 0 || v === 1)) {
+      data[field] = v === 1;
+    }
+  }
+}
+
+/** The frontmatter fields valid under the portable Agent Skills spec (SR-012). */
+const PORTABLE_FIELDS = new Set([
+  'name', 'description', 'license', 'compatibility', 'metadata', 'allowed-tools',
+]);
+
+/**
+ * SR-010: warn (never error) when a skill's frontmatter `name` differs from its
+ * parent directory name, naming which identifier governs invocation in the detected
+ * format. Defaults to "directory name governs" when the format is undetermined.
+ */
+export function checkNameDirMismatch(
+  result: ExtractResult,
+  format: RepoFormat | undefined,
+): ValidationResult | null {
+  if (result.fileType !== 'skill') return null;
+  const name = result.data['name'];
+  if (typeof name !== 'string' || name.length === 0) return null;
+  const dirName = basename(dirname(result.filePath));
+  if (name === dirName) return null;
+  const frontmatterWins = format === 'plugin' || format === 'multi-plugin';
+  const message = frontmatterWins
+    ? `frontmatter name "${name}" overrides the directory name "${dirName}" for invocation in ${format} format`
+    : `frontmatter name "${name}" differs from directory "${dirName}"; the directory name governs invocation`;
+  return {
+    filePath: result.filePath,
+    rule: 'name-dir-mismatch',
+    severity: 'warning',
+    message,
+  };
+}
+
+/**
+ * SR-012: in portable mode, flag every frontmatter field outside the portable set
+ * as non-portable to the Agent Skills spec (claude.ai upload / Skills API). Warning
+ * severity — the field is valid in Claude Code, just not portable elsewhere.
+ */
+function checkPortableFields(result: ExtractResult): ValidationResult[] {
+  if (result.fileType !== 'skill') return [];
+  const out: ValidationResult[] = [];
+  for (const key of Object.keys(result.data)) {
+    if (key.startsWith('___')) continue;
+    if (PORTABLE_FIELDS.has(key)) continue;
+    out.push({
+      filePath: result.filePath,
+      rule: 'non-portable-field',
+      severity: 'warning',
+      message: `frontmatter field "${key}" is Claude-Code-only and not portable to the Agent Skills spec (claude.ai upload / Skills API)`,
+    });
+  }
+  return out;
 }
 
 /** A rule definition with the x-skill-lint-level extension. */
@@ -115,9 +230,14 @@ function buildRules(config?: Pick<Config, 'models' | 'tools' | 'limits'>): Recor
     if (targetVal === undefined || targetVal === null) {
       return [];
     }
+    const value = String(targetVal);
+    // SR-002: `inherit` keeps the active session model — always valid.
+    if (value === 'inherit') return [];
+    // SR-003: full model identifiers are valid regardless of the short-name list.
+    if (/^claude-/.test(value) || /^us\.anthropic\./.test(value)) return [];
     const models = cfg.models;
-    if (!models.includes(String(targetVal))) {
-      return [{ message: `model "${targetVal}" is not in the allowed list: ${models.join(', ')}` }];
+    if (!models.includes(value)) {
+      return [{ message: `model "${targetVal}" is not in the allowed list: ${models.join(', ')} (or "inherit" / a full claude-* id)` }];
     }
     return [];
   };
@@ -170,14 +290,30 @@ function buildRules(config?: Pick<Config, 'models' | 'tools' | 'limits'>): Recor
     return [];
   };
 
-  /** Custom inline function: checks effort is one of [low, medium, high, max] when present. */
+  /** Custom inline function: checks effort is one of [low, medium, high, xhigh, max] when present. */
   const effortInvalidFn = (targetVal: unknown): Array<{ message: string }> => {
     if (targetVal === undefined || targetVal === null) {
       return [];
     }
-    const allowed = ['low', 'medium', 'high', 'max'];
+    const allowed = ['low', 'medium', 'high', 'xhigh', 'max'];
     if (!allowed.includes(String(targetVal))) {
       return [{ message: `effort "${targetVal}" is not valid; expected one of: ${allowed.join(', ')}` }];
+    }
+    return [];
+  };
+
+  /**
+   * Custom inline function (SR-011): warn when description + when_to_use together exceed
+   * the 1536-char listing budget Claude scans for auto-invocation. Operates on `$`.
+   */
+  const descriptionBudgetFn = (targetVal: unknown): Array<{ message: string }> => {
+    const target = targetVal as Record<string, unknown>;
+    const desc = typeof target['description'] === 'string' ? target['description'] : '';
+    const when = typeof target['when_to_use'] === 'string' ? target['when_to_use'] : '';
+    const total = desc.length + when.length;
+    const LIMIT = 1536;
+    if (total > LIMIT) {
+      return [{ message: `description + when_to_use is ${total} characters, exceeding the ${LIMIT}-character listing budget` }];
     }
     return [];
   };
@@ -308,6 +444,16 @@ function buildRules(config?: Pick<Config, 'models' | 'tools' | 'limits'>): Recor
       },
       extensions: level1Extensions,
     },
+
+    'description-budget': {
+      given: '$',
+      severity: 1,
+      message: '{{error}}',
+      then: {
+        function: descriptionBudgetFn,
+      },
+      extensions: level1Extensions,
+    },
   };
 }
 
@@ -334,6 +480,7 @@ function getRulesForFileType(fileType: string): Set<string> {
       return new Set([
         'required-fields-skill', 'non-empty-body',
         'skill-name-format', 'model-enum', 'unknown-tool', 'tools-not-in-body', 'file-size-limit', 'effort-invalid',
+        'description-budget',
       ]);
     default:
       return new Set(['non-empty-body']);
@@ -359,6 +506,7 @@ export async function validateFrontmatter(
   results: ExtractResult[],
   cliLevel: number,
   config?: Pick<Config, 'models' | 'tools' | 'limits' | 'default_level' | 'levels' | 'skills_root'>,
+  opts?: { format?: RepoFormat; portable?: boolean },
 ): Promise<ValidationResult[]> {
   const validationResults: ValidationResult[] = [];
   const allRules = buildRules(config);
@@ -383,6 +531,9 @@ export async function validateFrontmatter(
       }
       continue;
     }
+
+    // SR-015: coerce accepted boolean-field forms before schema validation.
+    coerceBooleanFields(result.data);
 
     // Resolve per-file quality level.
     const resolvedLevel = resolveLevel(result.filePath, result.data, profileConfig);
@@ -436,6 +587,20 @@ export async function validateFrontmatter(
         message: sr.message,
         effectiveLevel,
       });
+    }
+
+    // SR-010: name↔directory mismatch (warning). Level-1-gated to keep the default
+    // level quiet (INV-3). Fires from the lint pass so authors running `lint` see it.
+    if (effectiveLevel >= 1) {
+      const mismatch = checkNameDirMismatch(result, opts?.format);
+      if (mismatch) validationResults.push({ ...mismatch, effectiveLevel });
+    }
+
+    // SR-012: portable-mode findings run regardless of --level, only when enabled.
+    if (opts?.portable) {
+      for (const pf of checkPortableFields(result)) {
+        validationResults.push({ ...pf, effectiveLevel });
+      }
     }
   }
 

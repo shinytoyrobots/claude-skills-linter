@@ -16,13 +16,20 @@
       "minLength": 1,
       "description": "Human-readable description of what the skill does"
     },
-    "invocable": {
-      "type": "boolean",
-      "description": "Whether the skill can be invoked directly"
+    "when_to_use": {
+      "type": "string",
+      "description": "Additional auto-invocation context, appended to description (SR-004)"
     },
     "argument-hint": {
       "type": "string",
       "description": "Hint shown to the user for the skill argument"
+    },
+    "arguments": {
+      "oneOf": [
+        { "type": "array", "items": { "type": "string" } },
+        { "type": "string" }
+      ],
+      "description": "Positional argument names (space-separated string or list)"
     },
     "disable-model-invocation": {
       "type": "boolean",
@@ -32,12 +39,43 @@
       "type": "boolean",
       "description": "Whether users can invoke this skill directly"
     },
+    "background": {
+      "type": "boolean",
+      "description": "With context: fork, whether the forked skill runs in the background"
+    },
+    "model": {
+      "type": "string",
+      "description": "Model to use (a /model value, 'inherit', or a full model id)"
+    },
     "allowed-tools": {
       "oneOf": [
         { "type": "array", "items": { "type": "string" } },
         { "type": "string" }
       ],
-      "description": "List of tools the skill is permitted to use (array or space-delimited string)"
+      "description": "List of tools the skill is permitted to use (array or comma/space-delimited string)"
+    },
+    "disallowed-tools": {
+      "oneOf": [
+        { "type": "array", "items": { "type": "string" } },
+        { "type": "string" }
+      ],
+      "description": "Tools removed from the pool while the skill is active (array or string)"
+    },
+    "paths": {
+      "oneOf": [
+        { "type": "array", "items": { "type": "string" } },
+        { "type": "string" }
+      ],
+      "description": "Glob patterns limiting when the skill auto-loads (array or string)"
+    },
+    "shell": {
+      "type": "string",
+      "enum": ["bash", "powershell"],
+      "description": "Shell for !`command` blocks"
+    },
+    "license": {
+      "type": "string",
+      "description": "License identifier (part of the Agent Skills spec)"
     },
     "quality_level": {
       "type": "integer",

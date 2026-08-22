@@ -1,0 +1,20 @@
+{"id":1,"sr":"SR-001","scn":"SCN-001","cmd":"lint","level":1,"fixture":"effort-xhigh","expect":{"must_not_contain_rule":["effort-invalid"]}}
+{"id":2,"sr":"SR-002","scn":"SCN-001","cmd":"lint","level":1,"fixture":"model-inherit","expect":{"must_not_contain_rule":["model-enum"]}}
+{"id":3,"sr":"SR-003","scn":"SCN-001","cmd":"lint","level":1,"fixture":"model-fullid","expect":{"must_not_contain_rule":["model-enum"]}}
+{"id":4,"sr":"SR-004","scn":"SCN-001","cmd":"lint","level":1,"fixture":"when-to-use","expect":{"errors":[]}}
+{"id":5,"sr":"SR-004","scn":"SCN-001","cmd":"lint","level":1,"fixture":"modern-fields","expect":{"errors":[]}}
+{"id":6,"sr":"SR-005","scn":"SCN-001","cmd":"lint","level":1,"fixture":"current-tool","expect":{"must_not_contain_rule":["unknown-tool"]}}
+{"id":7,"sr":"SR-006","scn":"SCN-002","cmd":"graph","fixture":"ref-md-present","note":"[examples](examples.md) exists","expect":{"errors":[]}}
+{"id":8,"sr":"SR-006","scn":"SCN-002","cmd":"graph","fixture":"ref-md-missing","note":"[examples](examples.md) absent","expect":{"must_contain":[{"rule":"broken-reference","severity":"error"}]}}
+{"id":9,"sr":"SR-007","scn":"SCN-002","cmd":"graph","fixture":"ref-script-missing","note":"scripts/render.sh absent","expect":{"must_contain":[{"rule":"broken-reference","severity":"error"}]}}
+{"id":10,"sr":"SR-007","scn":"SCN-002","cmd":"graph","fixture":"ref-script-present","note":"scripts/render.sh exists","expect":{"errors":[]}}
+{"id":11,"sr":"SR-008","scn":"SCN-002","cmd":"graph","fixture":"ref-skilldir-var","note":"${CLAUDE_SKILL_DIR}/scripts/x.py absent","expect":{"must_contain":[{"rule":"broken-reference","severity":"error"}]}}
+{"id":12,"sr":"SR-009","scn":"SCN-002","cmd":"graph","fixture":"ref-bash-grant","note":"Bash(${CLAUDE_SKILL_DIR}/scripts/x.sh *) target absent","expect":{"must_contain":[{"rule":"broken-reference","severity":"error"}]}}
+{"id":13,"sr":"SR-010","scn":"SCN-003","cmd":"lint","level":1,"fixture":"name-mismatch","note":"dir deploy, name shipit","expect":{"must_contain":[{"rule":"name-dir-mismatch","severity":"warning"}]}}
+{"id":14,"sr":"SR-010","scn":"SCN-003","cmd":"lint","level":1,"fixture":"name-match","expect":{"must_not_contain_rule":["name-dir-mismatch"]}}
+{"id":15,"sr":"SR-010","scn":"SCN-003","cmd":"lint","level":1,"fixture":"name-omitted","note":"name omitted — directory authoritative","expect":{"must_not_contain_rule":["name-dir-mismatch"]}}
+{"id":16,"sr":"SR-011","scn":"SCN-004","cmd":"lint","level":1,"fixture":"desc-over-budget","note":"description+when_to_use > 1536","expect":{"must_contain":[{"rule":"description-budget","severity":"warning"}]}}
+{"id":17,"sr":"SR-011","scn":"SCN-004","cmd":"lint","level":1,"fixture":"desc-in-budget","expect":{"must_not_contain_rule":["description-budget"]}}
+{"id":18,"sr":"SR-012","scn":"SCN-005","cmd":"lint","level":1,"mode":"portable","fixture":"portable-violations","expect":{"must_contain":[{"rule":"non-portable-field","severity":"warning"}]}}
+{"id":19,"sr":"SR-012","scn":"SCN-005","cmd":"lint","level":1,"mode":"portable","fixture":"portable-clean","expect":{"must_not_contain_rule":["non-portable-field"]}}
+{"id":20,"sr":"SR-012","scn":"SCN-005","cmd":"lint","level":1,"fixture":"portable-violations","note":"default mode must NOT emit portability findings","expect":{"must_not_contain_rule":["non-portable-field"]}}
