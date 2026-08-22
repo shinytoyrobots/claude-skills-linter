@@ -1,0 +1,144 @@
+schema-version: "1.0"
+suite-version: "0.2.0"
+mode: spec+eval
+# Graded conformance suite for the skills-linter currency update. No populations — this
+# suite runs against the linter build itself (CI story), not against competing variants.
+#
+# Runner: `node evals/run.mjs [dimension...]` (default correctness). Deterministic; no LLM.
+# correctness dimension is EXECUTABLE (25 fixtures under evals/fixtures/, runner-checked).
+# Baseline @ 0.2.0 (pre-implementation, TDD-red): correctness 13/26 pass. The 13 reds each
+# map to a pending SR (SR-001/002/003/005/006/007/008/009/010/011/012) or a gap surfaced by
+# the adversarial holdouts (see phase-log 2026-08-22). Turning the reds green IS the
+# implementation acceptance test. Other dimensions remain placeholder (next flow-eval pass).
+# correctness grader is deterministic → zero variance by construction; no --characterize needed.
+
+dimensions:
+  - name: correctness
+    graders: [correctness]
+    datasets: [correctness-real-v1, correctness-adv-v1]
+    threshold: 1.0            # a currency linter must be exactly right on the currency cases
+  - name: performance
+    graders: [performance]
+    datasets: [performance-real-v1]
+    threshold: 0.80           # SR-101: 139-file suite under 2s
+  - name: maintainability
+    graders: [maintainability]
+    datasets: [maintainability-real-v1]
+    threshold: 0.70
+  - name: accessibility        # reframed to OUTPUT CONSUMABILITY (constitution override) —
+    graders: [accessibility]   # no UI surface; grades clarity + machine-parseability of
+    datasets: [accessibility-real-v1]  # --format terminal|github|json for CI consumers
+    threshold: 1.0
+  - name: security
+    graders: [security]
+    datasets: [security-real-v1, security-adv-v1]
+    threshold: 1.0            # incl. ReDoS on new reference regexes (INV-4)
+  - name: cost
+    graders: [cost]
+    datasets: []
+    threshold: 0.50
+  - name: cross-boundary       # NON-NEGOTIABLE (doctrine step 1). Real consumers: whole
+    graders: [cross-boundary]  # skill repos + CI pipelines. Asserts exit codes + finding
+    datasets: [cross-boundary-real-v1]  # counts against recorded per-repo baselines.
+    threshold: 1.0
+
+invariants:                    # NON-NEGOTIABLE (doctrine step 1) — hard-cull constraints,
+                               # dedicated grader authored up front in graders/invariants.md
+  - id: INV-1
+    statement: "No skill valid to Claude Code is reported as a lint ERROR in default mode."
+    grader: invariants
+    check: no-false-positive-errors
+  - id: INV-2
+    statement: "lint and graph passes are deterministic and offline (no network, no LLM)."
+    grader: invariants
+    check: deterministic-offline
+  - id: INV-3
+    statement: "No v0.5.1-clean skill in a supported format newly ERRORs."
+    grader: invariants
+    check: backward-compat-no-new-errors
+  - id: INV-4
+    statement: "Reference-extraction regexes are not ReDoS-vulnerable (linear time)."
+    grader: invariants
+    check: regex-linear-time
+
+weights:                       # tiebreakers / reporting only; Pareto front is unweighted
+  correctness: 0.40
+  cross-boundary: 0.20
+  security: 0.15
+  performance: 0.10
+  maintainability: 0.10
+  accessibility: 0.05
+  # cost carried at 0.0 for reporting — spec+eval mode has no generation cost to trade
+
+mappings:
+  # scenario → graded coverage
+  - scenario: SCN-001
+    graders: [correctness]
+    datasets: [correctness-real-v1, correctness-adv-v1]
+    tasks: [1, 2, 3, 4, 5, 6]
+    derived-requirements: [SR-001, SR-002, SR-003, SR-004, SR-005]
+  - scenario: SCN-002
+    graders: [correctness, cross-boundary]
+    datasets: [correctness-real-v1, cross-boundary-real-v1]
+    tasks: [7, 8, 9, 10, 11, 12]
+    derived-requirements: [SR-006, SR-007, SR-008, SR-009]
+  - scenario: SCN-003
+    graders: [correctness]
+    datasets: [correctness-real-v1]
+    tasks: [13, 14, 15]
+    derived-requirements: [SR-010]
+  - scenario: SCN-004
+    graders: [correctness]
+    datasets: [correctness-real-v1]
+    tasks: [16, 17]
+    derived-requirements: [SR-011]
+  - scenario: SCN-005
+    graders: [correctness]
+    datasets: [correctness-real-v1]
+    tasks: [18, 19, 20]
+    derived-requirements: [SR-012]
+  - scenario: SCN-006
+    graders: [correctness, cross-boundary]
+    datasets: [cross-boundary-real-v1]
+    derived-requirements: [SR-013, SR-014]
+  - scenario: SCN-007
+    graders: [correctness]
+    datasets: [correctness-adv-v1]
+    tasks: ["adv-1", "adv-2"]
+    derived-requirements: [SR-015, SR-016]
+  - requirement: SR-015
+    graders: [correctness]
+    datasets: [correctness-adv-v1]
+    threshold: 1.0
+  - requirement: SR-016
+    graders: [correctness]
+    datasets: [correctness-adv-v1]
+    threshold: 1.0
+  # non-functional requirement → grader
+  - requirement: SR-100
+    graders: [invariants, security]
+    threshold: 1.0
+  - requirement: SR-101
+    graders: [performance]
+    datasets: [performance-real-v1]
+    threshold: 0.80
+  - requirement: SR-102
+    graders: [cross-boundary]
+    datasets: [cross-boundary-real-v1]
+    threshold: 1.0
+  - requirement: SR-103
+    graders: [invariants, cross-boundary]
+    threshold: 1.0
+    mapping-pending: false
+
+goodhart-mitigation:
+  adversarial-required-for: [correctness, security]
+  rotation-period-days: 90
+  score-climb-flag-threshold: 0.30
+  # correctness-adv-v1 holds the false-positive holdouts: valid-but-unusual skills that a
+  # naive rule tightening would wrongly flag. It is the direct guard on INV-1.
+
+metastable:
+  stability-threshold: 0.85
+  spec-proximity-threshold: 0.60
+  pareto-dimension-minimum: 2

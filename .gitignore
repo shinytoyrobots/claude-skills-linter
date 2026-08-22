@@ -7,3 +7,8 @@ coverage/
 .skill-lint-cache/
 sprints/
 sprints/
+
+# flow working artifacts
+efforts/*/flow-state.yaml
+efforts/*/generations/
+.flow-index/

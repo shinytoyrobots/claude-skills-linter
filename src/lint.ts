@@ -26,6 +26,8 @@ export interface LintOptions {
   format: 'terminal' | 'json' | 'github';
   strict: boolean;
   ratchet: boolean;
+  /** Flag Claude-Code-only frontmatter fields not portable to the Agent Skills spec. */
+  portable?: boolean;
 }
 
 /** Input to the shared validation pipeline. */
@@ -156,7 +158,10 @@ export async function runLint(options: LintOptions): Promise<number> {
     if (changedFiles.length === 0) return reportZeroFiles(options.format);
 
     const results = changedFiles.map((f) => extractFile(f));
-    const validationResults = await validateFrontmatter(results, options.level, config);
+    const validationResults = await validateFrontmatter(results, options.level, config, {
+      format,
+      portable: options.portable,
+    });
     return runPipeline({ results, validationResults, options, config, rootDir });
   }
 
@@ -176,7 +181,10 @@ export async function runLint(options: LintOptions): Promise<number> {
 
   if (results.length === 0) return reportZeroFiles(options.format);
 
-  const validationResults = await validateFrontmatter(results, options.level, config);
+  const validationResults = await validateFrontmatter(results, options.level, config, {
+    format,
+    portable: options.portable,
+  });
 
   // Manifest validation — normal path only.
   if (format === 'plugin' || format === 'multi-plugin') {

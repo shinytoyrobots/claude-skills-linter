@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
-import { basename, dirname, resolve, relative } from 'node:path';
+import { existsSync } from 'node:fs';
+import { basename, dirname, resolve, relative, isAbsolute } from 'node:path';
 import type { ExtractResult, Config, RepoFormat, ValidationResult } from './types.js';
+import { tokenizeAllowedTools, checkNameDirMismatch } from './validate-frontmatter.js';
 
 /**
  * Installed-path prefix used by Claude Code for skill files.
@@ -603,6 +605,171 @@ function detectBrokenRefs(
   return results;
 }
 
+// --- Progressive-disclosure bundle references (SR-006..SR-009) ---
+
+/** Bundle subdirectory prefixes a bare (non-markdown-link) path may start with. */
+const BUNDLE_PREFIXES = ['scripts', 'references', 'reference', 'assets', 'examples', 'templates', 'shared', 'docs'];
+
+/** Markdown link: `[text](target)`. Linear-time (no nested quantifiers) — INV-4 safe. */
+const MARKDOWN_LINK_PATTERN = /\[[^\]]*\]\(([^)\s]+)\)/g;
+
+/**
+ * Bare bundle path starting with a known prefix or a ${CLAUDE_*_DIR} variable.
+ * Linear-time, anchored by a negative lookbehind so it never matches mid-path — INV-4 safe.
+ */
+const BARE_BUNDLE_PATTERN = new RegExp(
+  `(?<![\\w./$-])(?:\\$\\{CLAUDE_(?:SKILL|PROJECT)_DIR\\}\\/|(?:${BUNDLE_PREFIXES.join('|')})\\/)[\\w./-]+`,
+  'g',
+);
+
+/** Fenced code blocks (``` or ~~~). Stripped before reference scanning (adv-3 / INV-1). */
+const FENCED_BLOCK_PATTERN = /(^|\n)[ \t]*(```|~~~)[\s\S]*?\2[ \t]*(?=\n|$)/g;
+
+function stripFencedCodeBlocks(text: string): string {
+  return text.replace(FENCED_BLOCK_PATTERN, '\n');
+}
+
+/** True for references that are external, anchors, or globs — never existence-checked. */
+function isSkippableRef(p: string): boolean {
+  if (/^(https?:|mailto:|ftp:|tel:|#)/i.test(p)) return true;
+  if (/[*?[\]]/.test(p)) return true; // glob patterns are out of scope (D4)
+  return false;
+}
+
+/** A path whose last segment carries a file extension (e.g. `foo/bar.md`, `x.py`). */
+function hasFileExtension(p: string): boolean {
+  return /\.[A-Za-z0-9]+$/.test(p);
+}
+
+/**
+ * Extensions of files a skill typically *writes* at runtime rather than *bundles*.
+ * A bare prose mention of such a path ("writes rows to `scripts/gate/out.tsv`") is an
+ * output reference, not a progressive-disclosure resource, so it is not existence-checked
+ * — checking it would false-positive on a valid skill (INV-1). Explicit references
+ * (markdown links, ${CLAUDE_*_DIR}, Bash grants) are still checked regardless.
+ */
+const OUTPUT_FILE_EXTENSIONS = new Set([
+  'tsv', 'csv', 'log', 'lock', 'tmp', 'out', 'cache', 'pid', 'bak', 'db', 'sqlite',
+]);
+
+function isLikelyOutputFile(p: string): boolean {
+  const m = /\.([A-Za-z0-9]+)$/.exec(p);
+  return m ? OUTPUT_FILE_EXTENSIONS.has(m[1].toLowerCase()) : false;
+}
+
+/**
+ * True when a raw reference is "skill-bundle-shaped" and should be resolved on disk.
+ * Bare (non-link) refs must carry a file extension — this rejects directory mentions and
+ * truncated captures (e.g. the `shared/managed-agents-` left behind when a `*.md` glob is
+ * sliced at the wildcard), keeping the false-positive rate at zero (INV-1).
+ */
+function isBundleShaped(p: string, fromMarkdownLink: boolean): boolean {
+  if (/^\$\{CLAUDE_(?:SKILL|PROJECT)_DIR\}/.test(p)) return hasFileExtension(p);
+  if (p.startsWith('./') || p.startsWith('../')) return hasFileExtension(p);
+  if (new RegExp(`^(?:${BUNDLE_PREFIXES.join('|')})\\/`).test(p)) {
+    // From a markdown link the author committed to the target; a bare prose path must
+    // additionally carry an extension to count.
+    return fromMarkdownLink || hasFileExtension(p);
+  }
+  // A bare sibling file (no slash, has an extension) counts only from a markdown link,
+  // where the author explicitly linked it — bare prose siblings would over-match.
+  if (fromMarkdownLink && !p.includes('/') && hasFileExtension(p)) return true;
+  return false;
+}
+
+/** Expand ${CLAUDE_SKILL_DIR} / ${CLAUDE_PROJECT_DIR} (SR-008). */
+function expandSkillVars(raw: string, skillDir: string, projectRoot: string): string {
+  return raw
+    .replace(/\$\{CLAUDE_SKILL_DIR\}/g, skillDir)
+    .replace(/\$\{CLAUDE_PROJECT_DIR\}/g, projectRoot);
+}
+
+/** Pull path-shaped arguments out of Bash(...)/Tool(...) grants in allowed-tools (SR-009). */
+function bashGrantPaths(allowedTools: unknown): string[] {
+  const tokens: string[] =
+    Array.isArray(allowedTools) ? allowedTools.map(String)
+    : typeof allowedTools === 'string' ? tokenizeAllowedTools(allowedTools)
+    : [];
+  const paths: string[] = [];
+  for (const tok of tokens) {
+    const m = /^\w+\((.*)\)$/.exec(tok);
+    if (!m) continue;
+    for (const part of m[1].split(/\s+/)) {
+      if (part.includes('/') || part.includes('${')) paths.push(part);
+    }
+  }
+  return paths;
+}
+
+/**
+ * Detect broken progressive-disclosure references in SKILL.md bodies and allowed-tools
+ * script grants (SR-006..SR-009). Resolves each reference relative to the skill's own
+ * directory and reports `broken-reference` (error) for a target missing on disk. Runs for
+ * skill files in every format; kept disjoint from the canonical/plugin resolution above
+ * (bundle-shaped refs only) so it never re-reports or regresses existing behavior (INV-3).
+ */
+function detectSkillBundleRefs(
+  files: ExtractResult[],
+  format: RepoFormat | undefined,
+  rootDir: string | undefined,
+  filePathSet: Set<string>,
+): ValidationResult[] {
+  const results: ValidationResult[] = [];
+
+  // In plugin/multi-plugin format the existing pipeline already resolves `.md`
+  // relative/bare references. Defer those to it and handle only the reference kinds
+  // it structurally cannot (non-.md bundle files, ${VAR}s, Bash grants) — this keeps
+  // the two resolvers disjoint so neither double-reports (INV-3).
+  const deferMdRefs = format === 'plugin' || format === 'multi-plugin';
+
+  for (const file of files) {
+    if (file.errors.length > 0) continue;
+    if (file.fileType !== 'skill') continue;
+
+    const skillDir = dirname(file.filePath);
+    const projectRoot = rootDir ?? skillDir;
+    const originalBody = (file.data['___body_text'] as string) ?? '';
+    const scanBody = stripFencedCodeBlocks(originalBody);
+
+    // Collect (raw, fromMarkdownLink) candidates.
+    const candidates: Array<{ raw: string; fromLink: boolean }> = [];
+    for (const m of scanBody.matchAll(MARKDOWN_LINK_PATTERN)) candidates.push({ raw: m[1], fromLink: true });
+    for (const m of scanBody.matchAll(BARE_BUNDLE_PATTERN)) candidates.push({ raw: m[0], fromLink: false });
+    for (const p of bashGrantPaths(file.data['allowed-tools'])) candidates.push({ raw: p, fromLink: false });
+
+    const seen = new Set<string>();
+    for (const { raw, fromLink } of candidates) {
+      if (seen.has(raw)) continue;
+      seen.add(raw);
+      if (isSkippableRef(raw)) continue;
+      if (!isBundleShaped(raw, fromLink)) continue;
+      // A bare prose path to a runtime-output file (e.g. a `.tsv` the skill writes) is a
+      // mention, not a bundled resource — skip. Explicit refs (links/${VAR}/Bash) still check.
+      const hasVar = raw.includes('${CLAUDE_');
+      if (!fromLink && !hasVar && isLikelyOutputFile(raw)) continue;
+      // A ${VAR}/Bash-grant ref is always ours; a plain .md ref belongs to the existing
+      // resolver in plugin formats.
+      if (deferMdRefs && !hasVar && raw.toLowerCase().endsWith('.md')) continue;
+
+      const expanded = expandSkillVars(raw, skillDir, projectRoot);
+      const absPath = isAbsolute(expanded) ? expanded : resolve(skillDir, expanded);
+      // Resolved if the target is a known extracted file OR exists on disk.
+      if (filePathSet.has(absPath) || existsSync(absPath)) continue;
+
+      const line = findLine(originalBody, raw);
+      results.push({
+        filePath: file.filePath,
+        rule: 'broken-reference',
+        severity: 'error',
+        message: `Broken reference to "${raw}"`,
+        ...(line !== undefined ? { line } : {}),
+      });
+    }
+  }
+
+  return results;
+}
+
 /**
  * Detect orphaned files: context or agent files that no command/skill references.
  * Uses canonical names so that references resolve regardless of repo structure.
@@ -884,6 +1051,16 @@ export function validateGraph(
 
   // Broken references.
   results.push(...detectBrokenRefs(files, index, format, rootDir, filePathSet, pathToFile, skillRoots));
+
+  // Progressive-disclosure bundle references in SKILL.md bodies + allowed-tools grants.
+  results.push(...detectSkillBundleRefs(files, format, rootDir, filePathSet));
+
+  // SR-010: name↔directory mismatch also surfaces from the graph pass (parity with lint).
+  for (const file of files) {
+    if (file.errors.length > 0) continue;
+    const mismatch = checkNameDirMismatch(file, format);
+    if (mismatch) results.push(mismatch);
+  }
 
   // Orphaned files (only if enabled).
   if (config.graph.warn_orphans) {
