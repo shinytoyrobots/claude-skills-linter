@@ -2,7 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/).
+
 ## [Unreleased]
+
+## [0.6.0] - 2026-08-22
 
 Skills architecture currency update — re-anchors the linter to the 2026 Agent Skills spec. Verified against three real repos (anthropics/skills, a 958-file legacy suite, a multi-plugin production repo, ~1,150 skill files total) with zero new false-positive errors.
 

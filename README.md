@@ -1,6 +1,12 @@
 # claude-skill-lint
 
+[![npm version](https://img.shields.io/npm/v/claude-skill-lint.svg)](https://www.npmjs.com/package/claude-skill-lint)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](package.json)
+
 Structural validation and token-efficiency tooling for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) skills. Catches the bugs that Claude tolerates but your users pay for.
+
+**Jump to:** [Installation](#installation) · [Quick Start](#quick-start) · [What It Checks](#what-it-checks) · [Repository Formats](#repository-formats) · [Configuration](#configuration) · [CI Integration](#ci-integration) · [Changelog](#changelog)
 
 ## The Problem No One Sees
 
@@ -379,9 +385,9 @@ import { runLint, runGraph, loadConfig, validateFrontmatter, extractFile } from 
 
 See the [package exports](src/index.ts) for the full API surface.
 
-## Releases
+## Changelog
 
-See [GitHub Releases](https://github.com/shinytoyrobots/claude-skills-linter/releases) for version history and release notes.
+Every release is documented in [CHANGELOG.md](CHANGELOG.md), grouped by what changed and why it matters — not by commit. For the same history with npm publish timestamps, see [GitHub Releases](https://github.com/shinytoyrobots/claude-skills-linter/releases).
 
 ## License
 
