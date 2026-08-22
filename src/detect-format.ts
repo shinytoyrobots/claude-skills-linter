@@ -62,6 +62,15 @@ export function detectFormat(rootDir: string, config: Config): RepoFormat {
     }
   }
 
+  // Single-plugin format: a `.claude-plugin/plugin.json` at the repo root, with the skill
+  // either at the root (`SKILL.md`) or under `skills/`. marketplace.json is NOT required —
+  // a plugin that isn't published to a marketplace still declares plugin.json (SR-013).
+  if (existsSync(join(rootDir, '.claude-plugin', 'plugin.json'))) {
+    if (existsSync(join(rootDir, 'SKILL.md')) || hasSkillFiles(rootDir)) {
+      return 'plugin';
+    }
+  }
+
   // project-skills: .claude/skills/*/SKILL.md (priority 3, after plugin formats)
   if (hasProjectSkills(rootDir)) {
     return 'project-skills';

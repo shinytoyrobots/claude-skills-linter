@@ -594,4 +594,48 @@ describe('validateManifest', () => {
       assert.ok(broken[0].message.includes('bar'));
     });
   });
+
+  // --- SR-014: .claude-plugin/ contents rule ---
+
+  describe('SR-014: .claude-plugin/ contents', () => {
+    it('errors on a stray file inside .claude-plugin/', () => {
+      createFiles(tmp, ['.claude-plugin/plugin.json', 'SKILL.md']);
+      writeFileSync(join(tmp, '.claude-plugin', 'notes.md'), 'stray');
+
+      const results = validateManifest(tmp, 'plugin', makeConfig());
+      const findings = results.filter((r) => r.rule === 'claude-plugin-contents');
+      assert.equal(findings.length, 1);
+      assert.equal(findings[0].severity, 'error');
+      assert.ok(findings[0].message.includes('notes.md'));
+    });
+
+    it('errors on a stray subdirectory inside .claude-plugin/', () => {
+      createFiles(tmp, ['.claude-plugin/plugin.json']);
+      mkdirSync(join(tmp, '.claude-plugin', 'skills'), { recursive: true });
+
+      const results = validateManifest(tmp, 'plugin', makeConfig());
+      const findings = results.filter((r) => r.rule === 'claude-plugin-contents');
+      assert.equal(findings.length, 1);
+      assert.ok(findings[0].message.includes('skills'));
+    });
+
+    it('does not flag marketplace.json alongside plugin.json (INV-1 guard)', () => {
+      createFiles(tmp, ['.claude-plugin/plugin.json', '.claude-plugin/marketplace.json']);
+
+      const results = validateManifest(tmp, 'plugin', makeConfig());
+      const findings = results.filter((r) => r.rule === 'claude-plugin-contents');
+      assert.equal(findings.length, 0);
+    });
+
+    it('checks each plugins/*/.claude-plugin/ in multi-plugin format', () => {
+      createValidMarketplace(tmp, [{ name: 'foo', source: 'plugins/foo' }]);
+      createValidPlugin(tmp, 'plugins/foo', 'foo');
+      writeFileSync(join(tmp, 'plugins', 'foo', '.claude-plugin', 'stray.txt'), 'x');
+
+      const results = validateManifest(tmp, 'multi-plugin', makeConfig());
+      const findings = results.filter((r) => r.rule === 'claude-plugin-contents');
+      assert.equal(findings.length, 1);
+      assert.ok(findings[0].message.includes('stray.txt'));
+    });
+  });
 });

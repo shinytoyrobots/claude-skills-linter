@@ -1,5 +1,5 @@
 ---
-version: "0.3.0"
+version: "0.4.0"
 status: active
 last-amended: "2026-08-22"
 amendments-pending: 0
@@ -148,12 +148,16 @@ non-portable to the Agent Skills spec (claude.ai upload / Skills API)
 than skipping it
 
 **Acceptance criteria:**
-- Format detection returns `plugin` for a root-`SKILL.md` layout
+- Format detection returns `plugin` for a root-`SKILL.md` layout, even with no `marketplace.json`
 - The root `SKILL.md` is discovered and validated (not orphaned or ignored)
-- A `.claude-plugin/` directory containing anything other than `plugin.json` produces an error
+- A `.claude-plugin/` directory containing any entry other than `plugin.json` or
+  `marketplace.json` produces an error (rule `claude-plugin-contents`)
 
 **Derived requirements:** SR-013, SR-014
 **Covered by:** `evals/datasets/cross-boundary-real-v1.jsonl`
+**Amendment (v0.4.0):** SR-013 detection must not require `marketplace.json` (single plugins
+omit it); SR-014 must allow `marketplace.json` alongside `plugin.json` (it lives in the
+marketplace's `.claude-plugin/`) — otherwise every marketplace repo false-positives (INV-1).
 
 ### SCN-007: Author lints a skill using accepted-but-non-canonical value forms
 **Given** a `SKILL.md` whose frontmatter is valid to Claude Code but written in a form the
@@ -210,10 +214,10 @@ false positives absent from the initial SR list.
   as non-portable to the Agent Skills spec, at `warning` severity (rule
   `non-portable-field`).                                                        # ← SCN-005
 - SR-013: When a plugin places `SKILL.md` at the plugin root alongside
-  `.claude-plugin/plugin.json`, the linter shall detect the plugin format and validate the
-  root `SKILL.md`.                                                              # ← SCN-006
-- SR-014: If `.claude-plugin/` contains any file other than `plugin.json`, then the linter
-  shall report an error.                                                        # ← SCN-006
+  `.claude-plugin/plugin.json` (with or without a `marketplace.json`), the linter shall
+  detect the plugin format and discover and validate the root `SKILL.md`.       # ← SCN-006
+- SR-014: If a `.claude-plugin/` directory contains any entry other than `plugin.json` or
+  `marketplace.json`, then the linter shall report an error (rule `claude-plugin-contents`). # ← SCN-006
 - SR-015: Where a skill declares a boolean-typed frontmatter field
   (`disable-model-invocation`, `user-invocable`, `background`) using any spec-accepted form
   (`true`/`false`/`yes`/`no`/`on`/`off`/`1`/`0`, case-insensitive), the linter shall not

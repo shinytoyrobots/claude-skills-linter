@@ -51,9 +51,14 @@ export function validateManifest(
   }
 
   const results: ValidationResult[] = [];
+
+  // SR-014: every `.claude-plugin/` directory may contain only plugin.json and/or
+  // marketplace.json. Runs regardless of marketplace.json presence (single plugins omit it).
+  checkClaudePluginContents(rootDir, format, results);
+
   const marketplacePath = join(rootDir, '.claude-plugin', 'marketplace.json');
 
-  // If no marketplace.json exists, nothing to validate.
+  // If no marketplace.json exists, no marketplace-level validation to do.
   if (!existsSync(marketplacePath)) {
     return results;
   }
@@ -105,6 +110,54 @@ export function validateManifest(
   }
 
   return results;
+}
+
+// Entries permitted inside any .claude-plugin/ directory (SR-014).
+const ALLOWED_CLAUDE_PLUGIN_ENTRIES = new Set(['plugin.json', 'marketplace.json']);
+
+/**
+ * SR-014: a .claude-plugin/ directory must contain only plugin.json and/or marketplace.json.
+ * Anything else (skills/, commands/, a stray file) is a common mistake that silently breaks
+ * plugin loading -- those belong at the plugin root. Checks the root .claude-plugin/ and, for
+ * multi-plugin repos, each plugins subdir's .claude-plugin/.
+ */
+function checkClaudePluginContents(
+  rootDir: string,
+  format: RepoFormat,
+  results: ValidationResult[],
+): void {
+  const dirs = [join(rootDir, '.claude-plugin')];
+  if (format === 'multi-plugin') {
+    const pluginsDir = join(rootDir, 'plugins');
+    if (existsSync(pluginsDir)) {
+      try {
+        for (const e of readdirSync(pluginsDir, { withFileTypes: true })) {
+          if (e.isDirectory()) dirs.push(join(pluginsDir, e.name, '.claude-plugin'));
+        }
+      } catch {
+        // unreadable plugins/ -- nothing to add
+      }
+    }
+  }
+
+  for (const dir of dirs) {
+    if (!existsSync(dir)) continue;
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (ALLOWED_CLAUDE_PLUGIN_ENTRIES.has(entry)) continue;
+      results.push({
+        filePath: join(dir, entry),
+        rule: 'claude-plugin-contents',
+        severity: 'error',
+        message: `.claude-plugin/ must contain only plugin.json and marketplace.json -- remove "${entry}" (skills/, commands/, agents/ belong at the plugin root)`,
+      });
+    }
+  }
 }
 
 /**
