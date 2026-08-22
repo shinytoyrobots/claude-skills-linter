@@ -89,6 +89,7 @@ export function extractFile(filePath: string): ExtractResult {
  */
 function pluginPatterns(root: string): string[] {
   return [
+    `${root}/SKILL.md`,          // single-skill plugin with a root-level SKILL.md (SR-013)
     `${root}/skills/**/*.md`,
     `${root}/context/*.md`,
     `${root}/agents/*.md`,

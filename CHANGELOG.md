@@ -12,6 +12,8 @@ Skills architecture currency update — re-anchors the linter to the 2026 Agent 
 - **`--portable` mode** — flags Claude-Code-only frontmatter fields that are not portable to the Agent Skills spec (claude.ai upload / Skills API), which accepts only `name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`.
 - **`name-dir-mismatch`** warning — when a skill's frontmatter `name` differs from its directory, naming which identifier governs invocation in the detected format (surfaces on both `lint` and `graph`).
 - **`description-budget`** warning — when `description` + `when_to_use` exceeds the 1536-character listing budget.
+- **Single-plugin format detection** — a repo with `.claude-plugin/plugin.json` and a root-level `SKILL.md` (or `skills/`) is detected as a plugin even without `marketplace.json`, and the root `SKILL.md` is discovered and validated.
+- **`claude-plugin-contents`** error — a `.claude-plugin/` directory must contain only `plugin.json` and/or `marketplace.json`; a stray file or subdirectory (skills/, commands/) there silently breaks plugin loading.
 - Schema: recognizes current frontmatter fields `when_to_use`, `arguments`, `disallowed-tools`, `background`, `paths`, `shell`, `license`, `model`.
 
 ### Fixed

@@ -30,6 +30,7 @@ const FIXTURES = join(HERE, 'fixtures');
 
 const DIM_DATASETS = {
   correctness: ['correctness-real-v1.jsonl', 'correctness-adv-v1.jsonl'],
+  'cross-boundary': ['cross-boundary-real-v1.jsonl'],
 };
 
 function runLinter(task) {
@@ -75,7 +76,7 @@ function loadTasks(file) {
   return readFileSync(p, 'utf-8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l));
 }
 
-const dims = process.argv.slice(2).length ? process.argv.slice(2) : ['correctness'];
+const dims = process.argv.slice(2).length ? process.argv.slice(2) : ['correctness', 'cross-boundary'];
 let total = 0, passed = 0;
 const failures = [];
 

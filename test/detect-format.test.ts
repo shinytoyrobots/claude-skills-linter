@@ -139,6 +139,39 @@ describe('detectFormat', () => {
     });
   });
 
+  // --- SR-013: single-plugin format (plugin.json, no marketplace.json) ---
+
+  describe('SR-013: single-plugin format', () => {
+    it('detects plugin for a root-level SKILL.md + .claude-plugin/plugin.json (no marketplace)', () => {
+      createFiles(tmp, [
+        '.claude-plugin/plugin.json',
+        'SKILL.md',
+      ]);
+
+      const result = detectFormat(tmp, makeConfig());
+      assert.equal(result, 'plugin');
+    });
+
+    it('detects plugin for skills/*/SKILL.md + .claude-plugin/plugin.json (no marketplace)', () => {
+      createFiles(tmp, [
+        '.claude-plugin/plugin.json',
+        'skills/my-skill/SKILL.md',
+      ]);
+
+      const result = detectFormat(tmp, makeConfig());
+      assert.equal(result, 'plugin');
+    });
+
+    it('does not detect plugin from plugin.json alone (no root SKILL.md, no skills/)', () => {
+      createFiles(tmp, [
+        '.claude-plugin/plugin.json',
+      ]);
+
+      const result = detectFormat(tmp, makeConfig());
+      assert.notEqual(result, 'plugin');
+    });
+  });
+
   // --- AC-3: legacy-commands format ---
 
   describe('AC-3: legacy-commands format', () => {
