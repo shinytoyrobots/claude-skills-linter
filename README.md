@@ -18,7 +18,7 @@ Caught in under two seconds. No LLM calls. Deterministic.
 
 ## Companion: /te-review
 
-This repo also includes [`/te-review`](skills/te-review.md), an LLM-powered deep audit skill that goes beyond structural validation — analyzing token efficiency, redundancy, output constraints, and instruction quality. It produces a scored assessment (0-24) with estimated token savings per fix.
+This repo also includes [`/te-review`](skills/te-review.md), an LLM-powered deep audit skill that goes beyond structural validation — analyzing signal density, cache-stability, progressive disclosure, and instruction quality. It produces a scored assessment (0-24) with a prioritized, leverage-ranked optimization plan.
 
 claude-skill-lint catches structural bugs deterministically in CI. `/te-review` is an on-demand complement for deeper optimization.
 
