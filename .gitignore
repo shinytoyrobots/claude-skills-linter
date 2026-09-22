@@ -12,3 +12,9 @@ sprints/
 efforts/*/flow-state.yaml
 efforts/*/generations/
 .flow-index/
+
+# OS
+.DS_Store
+
+# Local Claude Code settings (per-machine permissions)
+.claude/settings.local.json
