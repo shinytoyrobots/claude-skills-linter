@@ -112,7 +112,7 @@ Validates YAML frontmatter against file-type schemas:
 |-----------|----------------|-----------------|
 | Command | `description` | `model`, `allowed-tools`, `argument-hint`, `context`, `agent`, `effort`, `hooks`, `compatibility`, `metadata` |
 | Agent | `name`, `description` | `model`, `tools`, `context`, `agent`, `effort`, `hooks`, `compatibility`, `metadata` |
-| Skill (plugin) | `name`, `description` | `invocable`, `argument-hint`, `user-invocable`, `allowed-tools`, `context`, `agent`, `effort`, `hooks`, `compatibility`, `metadata` |
+| Skill | `name`, `description` | `when_to_use`, `argument-hint`, `arguments`, `disable-model-invocation`, `user-invocable`, `background`, `model`, `context`, `agent`, `effort`, `hooks`, `shell`, `paths`, `allowed-tools`, `disallowed-tools`, `license`, `compatibility`, `metadata` |
 | Context | *(none)* | — |
 
 #### Modern Frontmatter Fields
@@ -131,9 +131,21 @@ These fields are supported across all file types (command, agent, skill):
 
 At Level 1: model enum validation, known tool verification (including `Bash(python*)` pattern syntax), tool-to-body consistency, file size limits, `effort` value validation, skill name format and length (64 characters max).
 
+Skills also get two warnings that explain how Claude Code will actually treat them:
+
+- **`description-budget`** — `description` + `when_to_use` over 1,536 characters. Claude scans that combined text to decide when to auto-invoke; the excess is wasted or truncated.
+- **`name-dir-mismatch`** — frontmatter `name` differs from the skill's directory. The message says which identifier governs invocation in the detected repo format.
+
+#### Portable mode
+
+Claude Code accepts more than the open Agent Skills spec does. `--portable` flags what won't survive an upload to claude.ai or the Skills API:
+
+- **`non-portable-field`** — any frontmatter field outside `name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`.
+- **`non-portable-name`** — skill names containing `anthropic` or `claude`, which those upload paths reject. Claude Code itself loads them, so this is off unless you ask for portability.
+
 ### Manifest Validation (plugin format)
 
-Validates `marketplace.json` and `plugin.json` structure, source path resolution, name consistency, and missing skill files.
+Validates `marketplace.json` and `plugin.json` structure, source path resolution, name consistency, and missing skill files. A `.claude-plugin/` directory may contain only `plugin.json` and `marketplace.json` (`claude-plugin-contents`): a stray `skills/` or `commands/` there silently breaks plugin loading.
 
 The plugin and marketplace *schema* (reserved plugin names, MCP server paths, insecure URLs, dependency sources) is owned by Anthropic's official validator, `claude plugin validate`, and is deliberately not reimplemented here. Run it alongside the linter, or let the linter run it for you and merge the findings into one report:
 
@@ -150,7 +162,7 @@ Skills mature. The quality bar should mature with them.
 | Level | What It Adds | When |
 |-------|-------------|------|
 | **0** | Valid YAML, required fields, non-empty body | New skills, prototyping |
-| **1** | Model enum, known tools, tool-in-body check, file size limits | Established skills, shared suites |
+| **1** | Model enum, known tools, tool-in-body check, file size limits, skill name format and length | Established skills, shared suites |
 
 Declare per file:
 
@@ -189,7 +201,7 @@ claude-skill-lint auto-detects your repository structure. Four formats are suppo
 |--------|-----------|-----------------|
 | **legacy-commands** | `commands/`, `agents/`, `context/` at repo root | No `.claude-plugin/` directory |
 | **project-skills** | `.claude/skills/{name}/SKILL.md` | `.claude/skills/` with `SKILL.md` files |
-| **plugin** | `skills/{name}/SKILL.md` with marketplace manifest | `.claude-plugin/marketplace.json` at root |
+| **plugin** | `skills/{name}/SKILL.md` with marketplace manifest, or a single plugin with a root `SKILL.md` | `.claude-plugin/marketplace.json` at root, or `.claude-plugin/plugin.json` plus a root `SKILL.md` / `skills/` |
 | **multi-plugin** | `plugins/{name}/skills/{skill}/SKILL.md` | Plugin subdirectories with `.claude-plugin/plugin.json` |
 
 Detection priority: config override > multi-plugin > plugin > project-skills > legacy-commands. The first match wins.
@@ -395,7 +407,7 @@ All core functions are exported for integration into custom tooling:
 import { runLint, runGraph, loadConfig, validateFrontmatter, extractFile } from 'claude-skill-lint';
 ```
 
-See the [package exports](src/index.ts) for the full API surface.
+`runPluginValidate(rootDir)` wraps the official `claude plugin validate` and returns findings in the same shape as the rest. See the [package exports](src/index.ts) for the full API surface.
 
 ## Changelog
 
