@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-01
+
+Plays nicely with Anthropic's own tooling instead of competing with it. Plugin *schema* validation (reserved plugin names, MCP server paths, insecure URLs, dependency sources) belongs to `claude plugin validate`, so 0.7.0 lets the linter run it and fold the results into one report, and adds the skill-name checks that validator doesn't make. Checked against anthropics/skills (3b3fad9): identical findings to 0.6.0 at `--level 1`.
+
 ### Added
 
 - **`--run-plugin-validate`** — opt-in; runs the official `claude plugin validate --json` on plugin repos and merges its manifest and content findings into the report (`claude-plugin-validate`). A missing or unparseable CLI is an error (`claude-plugin-validate-unavailable`), not a silent skip. The plugin schema stays owned by Anthropic's validator rather than being copied here.
