@@ -174,6 +174,25 @@ function checkPortableFields(result: ExtractResult): ValidationResult[] {
   return out;
 }
 
+/**
+ * In portable mode, flag skill names containing "anthropic" or "claude": the Skills API
+ * and claude.ai upload reject them. Not a general rule — Claude Code loads such names
+ * (Anthropic's own `claude-api` skill), so it only applies when portability is requested.
+ */
+function checkPortableName(result: ExtractResult): ValidationResult[] {
+  if (result.fileType !== 'skill') return [];
+  const name = result.data['name'];
+  if (typeof name !== 'string') return [];
+  const hit = ['anthropic', 'claude'].find((w) => name.toLowerCase().includes(w));
+  if (!hit) return [];
+  return [{
+    filePath: result.filePath,
+    rule: 'non-portable-name',
+    severity: 'warning',
+    message: `skill name "${name}" contains reserved word "${hit}"; the Skills API and claude.ai upload reject it`,
+  }];
+}
+
 /** A rule definition with the x-skill-lint-level extension. */
 export interface LevelRule {
   given: string;
@@ -208,7 +227,8 @@ const DEFAULT_CONFIG: Pick<Config, 'models' | 'tools' | 'limits'> = {
  * - tools-not-in-body: Checks at least one allowed tool appears in body
  * - file-size-limit: Checks ___file_size <= config.limits.max_file_size
  * - skill-name-format: Checks skill name matches kebab-case pattern
- * - effort-invalid: Checks effort value is one of [low, medium, high, max]
+ * - effort-invalid: Checks effort value is one of [low, medium, high, xhigh, max]
+ * - skill-name-length: Warns when a skill name exceeds the 64-character Agent Skills limit
  */
 function buildRules(config?: Pick<Config, 'models' | 'tools' | 'limits'>): Record<string, LevelRule> {
   const cfg = config ?? DEFAULT_CONFIG;
@@ -330,6 +350,15 @@ function buildRules(config?: Pick<Config, 'models' | 'tools' | 'limits'>): Recor
     return [];
   };
 
+  /** Custom inline function: Agent Skills spec caps skill names at 64 characters. */
+  const skillNameLengthFn = (targetVal: unknown): Array<{ message: string }> => {
+    const LIMIT = 64;
+    if (typeof targetVal === 'string' && targetVal.length > LIMIT) {
+      return [{ message: `skill name is ${targetVal.length} characters, exceeding the ${LIMIT}-character limit` }];
+    }
+    return [];
+  };
+
   return {
     // Level 0 rules
     'required-fields-command': {
@@ -391,6 +420,16 @@ function buildRules(config?: Pick<Config, 'models' | 'tools' | 'limits'>): Recor
       message: '{{error}}',
       then: {
         function: skillNameFormatFn,
+      },
+      extensions: level1Extensions,
+    },
+
+    'skill-name-length': {
+      given: '$.name',
+      severity: 1,
+      message: '{{error}}',
+      then: {
+        function: skillNameLengthFn,
       },
       extensions: level1Extensions,
     },
@@ -461,7 +500,7 @@ function buildRules(config?: Pick<Config, 'models' | 'tools' | 'limits'>): Recor
  * Determine which rules to enable for a given file type.
  * - command: Level 0 schema + body + all Level 1 rules
  * - agent: Level 0 schema + body + model-enum + file-size-limit (not tool rules)
- * - skill: Level 0 schema + body + skill-name-format + file-size-limit
+ * - skill: Level 0 schema + body + skill-name rules + file-size-limit
  * - legacy-agent, context, readme, unknown: Level 0 body only
  */
 function getRulesForFileType(fileType: string): Set<string> {
@@ -479,7 +518,7 @@ function getRulesForFileType(fileType: string): Set<string> {
     case 'skill':
       return new Set([
         'required-fields-skill', 'non-empty-body',
-        'skill-name-format', 'model-enum', 'unknown-tool', 'tools-not-in-body', 'file-size-limit', 'effort-invalid',
+        'skill-name-format', 'skill-name-length', 'model-enum', 'unknown-tool', 'tools-not-in-body', 'file-size-limit', 'effort-invalid',
         'description-budget',
       ]);
     default:
@@ -598,7 +637,7 @@ export async function validateFrontmatter(
 
     // SR-012: portable-mode findings run regardless of --level, only when enabled.
     if (opts?.portable) {
-      for (const pf of checkPortableFields(result)) {
+      for (const pf of [...checkPortableFields(result), ...checkPortableName(result)]) {
         validationResults.push({ ...pf, effectiveLevel });
       }
     }

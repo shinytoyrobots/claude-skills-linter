@@ -129,11 +129,19 @@ These fields are supported across all file types (command, agent, skill):
 | `metadata` | `object` | Arbitrary key-value metadata for tooling and marketplace use |
 | `allowed-tools` | `array` or `string` | Tools the skill can use. Supports glob patterns like `mcp__*` and `Bash(*)` for broad matching, or specific tool names for fine-grained control |
 
-At Level 1: model enum validation, known tool verification (including `Bash(python*)` pattern syntax), tool-to-body consistency, file size limits, `effort` value validation, skill name format.
+At Level 1: model enum validation, known tool verification (including `Bash(python*)` pattern syntax), tool-to-body consistency, file size limits, `effort` value validation, skill name format and length (64 characters max).
 
 ### Manifest Validation (plugin format)
 
 Validates `marketplace.json` and `plugin.json` structure, source path resolution, name consistency, and missing skill files.
+
+The plugin and marketplace *schema* (reserved plugin names, MCP server paths, insecure URLs, dependency sources) is owned by Anthropic's official validator, `claude plugin validate`, and is deliberately not reimplemented here. Run it alongside the linter, or let the linter run it for you and merge the findings into one report:
+
+```bash
+claude-skill-lint lint . --run-plugin-validate   # requires the Claude Code CLI on PATH; plugin repos only
+```
+
+If the CLI is missing or returns something unparseable, the run fails with a `claude-plugin-validate-unavailable` error rather than silently skipping the check.
 
 ## Progressive Quality Levels
 
@@ -257,6 +265,8 @@ claude-skill-lint lint . --ratchet                          # Prevent quality re
 claude-skill-lint lint . --changed-only --base origin/main  # Only changed files
 claude-skill-lint lint . --format json                      # JSON for tooling
 claude-skill-lint lint . --format github                    # GitHub Actions annotations
+claude-skill-lint lint . --portable                         # Flag Claude-Code-only fields and names that won't upload to claude.ai / Skills API
+claude-skill-lint lint . --run-plugin-validate              # Also run `claude plugin validate` (plugin repos)
 ```
 
 ### `claude-skill-lint init`
@@ -278,6 +288,8 @@ Exit codes: `0` clean, `1` errors found, `2` config error.
 | `--format` / `-f` | `terminal` | Output: `terminal`, `json`, `github` |
 | `--strict` | `false` | Treat warnings as errors |
 | `--ratchet` | `false` | Fail if any quality_level decreased vs base |
+| `--portable` | `false` | Flag Claude-Code-only frontmatter fields and reserved-word skill names (`anthropic`, `claude`) that the Skills API / claude.ai reject |
+| `--run-plugin-validate` | `false` | Also run `claude plugin validate` and merge its findings (plugin repos; needs the Claude Code CLI) |
 
 ## Configuration
 

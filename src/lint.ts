@@ -10,6 +10,7 @@ import { detectFormat } from './detect-format.js';
 import { extractAll, extractFile } from './extract.js';
 import { validateFrontmatter } from './validate-frontmatter.js';
 import { validateManifest } from './validate-manifest.js';
+import { runPluginValidate } from './run-plugin-validate.js';
 import { reportTerminal, reportGitHub, reportJSON } from './reporter.js';
 import { execFileSync } from 'node:child_process';
 import { minimatch } from 'minimatch';
@@ -28,6 +29,8 @@ export interface LintOptions {
   ratchet: boolean;
   /** Flag Claude-Code-only frontmatter fields not portable to the Agent Skills spec. */
   portable?: boolean;
+  /** Also run the official `claude plugin validate` and merge its findings (plugin formats only). */
+  runPluginValidate?: boolean;
 }
 
 /** Input to the shared validation pipeline. */
@@ -189,6 +192,11 @@ export async function runLint(options: LintOptions): Promise<number> {
   // Manifest validation — normal path only.
   if (format === 'plugin' || format === 'multi-plugin') {
     validationResults.push(...validateManifest(rootDir, format, config));
+    if (options.runPluginValidate) {
+      validationResults.push(...runPluginValidate(rootDir));
+    }
+  } else if (options.runPluginValidate) {
+    process.stderr.write(`warning: --run-plugin-validate only applies to plugin repos (detected "${format}"), skipping\n`);
   }
 
   return runPipeline({ results, validationResults, options, config, rootDir });

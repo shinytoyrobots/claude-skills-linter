@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **`--run-plugin-validate`** — opt-in; runs the official `claude plugin validate --json` on plugin repos and merges its manifest and content findings into the report (`claude-plugin-validate`). A missing or unparseable CLI is an error (`claude-plugin-validate-unavailable`), not a silent skip. The plugin schema stays owned by Anthropic's validator rather than being copied here.
+- **`skill-name-length`** warning (Level 1) — skill names over the 64-character Agent Skills limit.
+- **`non-portable-name`** warning (`--portable` only) — skill names containing `anthropic` or `claude`, which the Skills API and claude.ai upload reject. Portable-only because Claude Code loads them (Anthropic's own `claude-api` skill).
+
+### Fixed
+
+- Stale `effort-invalid` doc comment omitted `xhigh`.
+
 ## [0.6.0] - 2026-08-22
 
 Skills architecture currency update — re-anchors the linter to the 2026 Agent Skills spec. Verified against three real repos (anthropics/skills, a 958-file legacy suite, a multi-plugin production repo, ~1,150 skill files total) with zero new false-positive errors.
