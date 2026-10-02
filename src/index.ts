@@ -34,6 +34,7 @@ export type { LevelRule } from './validate-frontmatter.js';
 
 export { validateGraph } from './validate-graph.js';
 export { validateManifest } from './validate-manifest.js';
+export { runPluginValidate } from './run-plugin-validate.js';
 
 // ── Profiles ────────────────────────────────────────────────────
 export { resolveLevel, checkRatchet } from './profiles.js';

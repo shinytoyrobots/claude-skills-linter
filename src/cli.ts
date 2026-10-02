@@ -55,6 +55,11 @@ const cli = yargs(hideBin(process.argv))
           describe: 'Flag Claude-Code-only frontmatter fields not portable to the Agent Skills spec (claude.ai / Skills API)',
           type: 'boolean',
           default: false,
+        })
+        .option('run-plugin-validate', {
+          describe: 'Also run the official `claude plugin validate` (requires the Claude Code CLI) and merge its findings; plugin repos only',
+          type: 'boolean',
+          default: false,
         }),
     async (argv) => {
       try {
@@ -67,6 +72,7 @@ const cli = yargs(hideBin(process.argv))
           strict: argv.strict,
           ratchet: argv.ratchet,
           portable: argv.portable,
+          runPluginValidate: argv.runPluginValidate,
         });
         process.exit(exitCode);
       } catch (err) {
