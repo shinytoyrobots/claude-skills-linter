@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-07
+
+No linter changes. The bundled companion audit skill is updated and renamed; the npm package is unchanged apart from the version and README.
+
 ### Changed
 
 - **`/te-review` is now `/sk-review`**, synced to the latest upstream version and repackaged as a standard Agent Skill directory (`skills/sk-review/SKILL.md` with `references/`). Adds Opus 5.5 instruction checks, effort routing alongside model routing, vague-negative detection, and skill discovery across `.claude/skills/` as well as `.claude/commands/`. Suite-mode, Opus 5.5, and report-template detail now load on demand from reference files. Reinstall from the new path; the old `skills/te-review.md` URL no longer exists.
