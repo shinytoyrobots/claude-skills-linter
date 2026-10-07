@@ -1,6 +1,7 @@
 ---
-description: Review skills, prompts, or full suite for context efficiency — signal density, cache-stability, and progressive disclosure, with a strategic optimization plan
-argument-hint: "audit <skill-name> | suite | compare <before> <after>"
+name: sk-review
+description: Use when the user wants to audit a Claude Code skill, slash command, agent, prompt, or whole skill suite for context efficiency — signal density, cache-stability, progressive disclosure, output cost, instruction quality, and model/effort routing — or wants to compare the context impact of a skill change. Not for structural or frontmatter validation (that is claude-skill-lint) and not for writing a new skill.
+argument-hint: audit <skill-name> | suite | compare <before> <after>
 model: sonnet
 allowed-tools:
   - Read
@@ -38,42 +39,41 @@ not raw size. Where a file is large *and stable and dense*, that is a pass, not 
 ## Input
 
 `$ARGUMENTS` = one of:
-- `audit <skill-name>` — review a single skill file (e.g., `audit competitive-scan`)
+- `audit <skill-name>` — review a single skill (e.g., `audit competitive-scan`)
 - `suite` — review the full skill suite (CLAUDE.md + all skills + agents + context files)
 - `compare <before> <after>` — compare the context impact of a skill change (file paths)
 
 If `$ARGUMENTS` is empty, default to `suite`.
 
+### Where skills live
+
+Look in each of these, in order, and use the first match:
+
+| Layout | Path |
+|--------|------|
+| Project skill | `.claude/skills/{name}/SKILL.md` |
+| User skill | `~/.claude/skills/{name}/SKILL.md` |
+| Legacy command | `.claude/commands/{name}.md`, then `~/.claude/commands/{name}.md` |
+| Plugin skill | `skills/{name}/SKILL.md` under a directory with `.claude-plugin/` |
+
+A skill's *referenced files* are the supporting files in its own directory and any context
+or agent files its body points to by path (e.g., `~/.claude/commands/context/*.md`,
+`~/.claude/agents/*.md`).
+
 ## Mode: Single Skill Audit
 
 When `$ARGUMENTS` starts with `audit`:
 
-1. Read the target skill file from `~/.claude/commands/{skill-name}.md`
-2. Read all context files the skill references (lines matching `~/.claude/commands/context/`)
-3. Read any agent methodology files the skill references (lines matching `~/.claude/commands/agents/`)
-4. Read `~/.claude/CLAUDE.md` (global instructions that load every session)
-5. Run the four lint passes below against this skill and its loaded files
-6. Produce the Strategic Assessment
+1. Locate and read the target skill (see the table above)
+2. Read every file the skill references — supporting files, context files, agent files
+3. Read `~/.claude/CLAUDE.md` and the project `CLAUDE.md`, if present (they load every session)
+4. Run the four lint passes below against this skill and its loaded files
+5. Produce the Strategic Assessment
 
 ## Mode: Suite Review
 
-When `$ARGUMENTS` is `suite`:
-
-1. Read `~/.claude/CLAUDE.md`
-2. Read all project-level CLAUDE.md files (Glob for `**/CLAUDE.md` in common project directories)
-3. Glob `~/.claude/commands/*.md` to inventory all skills
-4. Glob `~/.claude/commands/context/*.md` to inventory all context files
-5. Glob `~/.claude/commands/agents/*.md` to inventory all agent files
-
-Build a dependency map:
-- For each skill, extract which context files and agent files it references
-- Count how many skills reference each context file (high-fanout files are cache anchors —
-  keep them stable and dense; see the Context Anchor Map)
-- Measure file sizes as a rough signal, not a verdict — pair size with fanout and volatility
-
-Run the four lint passes at the suite level, then produce the Strategic Assessment.
-
-Use the Agent tool to launch parallel subagents (model: haiku) for structural analysis — one for skills inventory, one for context file analysis, one for CLAUDE.md analysis. Each subagent returns its top 10 findings only — not full analysis. Merge their findings.
+When `$ARGUMENTS` is `suite`, follow `references/suite-mode.md` for inventory, the dependency
+map, and the Context Anchor Map, then run the four lint passes at the suite level.
 
 ## Mode: Compare
 
@@ -111,7 +111,8 @@ Check the loading structure, not raw size:
 - **CLAUDE.md @-imports**: Each @-import loads every message. Flag any that could move to a
   skill loaded on demand.
 - **Subagent model declaration**: Flag subagents without explicit `model:` in frontmatter
-  (defaults to an expensive tier). Match the tier to the task (see Model Routing).
+  (defaults to an expensive tier). Match the tier to the task, and consider an `effort:`
+  field alongside it (see Model & Effort Routing).
 - **Tool declarations**: Compare `allowed-tools` against tools actually referenced in the
   body. Flag declared-but-unused tools — each carries a definition cost.
 
@@ -166,9 +167,14 @@ Flag instruction patterns that waste tokens or misfire on current models:
 - **Default-behavior instructions**: Instructions telling Claude to do what it already does
   by default. Test: "Would removing this change behavior?" If not, cut.
 - **Ambiguous instructions**: Directions interpretable multiple ways that cause hedging or
-  over-explanation.
+  over-explanation. This includes vague negatives — "avoid a generic look," "don't be
+  formulaic" — which swap one default for another. Recommend naming the specific patterns
+  to avoid instead.
 - **Conflicting constraints**: Contradictory requirements without a stated priority (e.g.,
   "be thorough" + "keep it brief").
+
+If the target runs on Opus 5.5 (declared, or inherited because no `model:` is set), also
+apply the checks in `references/opus-5-5-checks.md`.
 
 ## Scoring
 
@@ -195,7 +201,8 @@ Rank findings by leverage — impact per edit, weighted toward changes that rais
 density, improve cache-stability, or reduce *output* tokens (output isn't cached). Group into:
 
 1. **Quick wins** (< 5 minutes each): Remove filler and politeness, dial back aggressive
-   emphasis, add conciseness directives, declare subagent models, drop unused tools.
+   emphasis, remove think-carefully and reasoning-in-output lines, add conciseness
+   directives, declare subagent models, drop unused tools.
 2. **Medium effort** (15-30 minutes each): Deduplicate skill-context overlap, add output
    format constraints, move rarely-needed inline detail into on-demand reference files.
 3. **Architectural changes** (1+ hours): Introduce progressive disclosure where a skill is a
@@ -222,22 +229,11 @@ For each reviewed skill (or the suite aggregate), give a qualitative profile:
 Rough sizing only: markdown runs ~4 characters per token, but the tokenizer changed on
 recent models (materially more tokens for the same text than older models produced) — treat
 any line- or character-based estimate as approximate and re-verify budgets that were set on
-an older model. The only accurate count is the `count_tokens` endpoint; note it estimates
+an older model. Output budgets shift too: Opus 5.5 tends to finish the same task in fewer
+tokens than Opus 5. The only accurate count is the `count_tokens` endpoint; note it estimates
 *without* caching logic, so it reports raw input, not what you'll be billed after cache reads.
 
-### Context Anchor Map (Suite Mode Only)
-
-Produce a table of high-fanout context files — the cache anchors:
-
-| Context File | Size (lines) | Loaded By (# skills) | Volatility (recent edits) | Signal Density | Recommendation |
-|-------------|-------------|---------------------|---------------------------|----------------|----------------|
-
-These files cache once and are read cheaply by many skills, so the goal is **keep them
-stable and dense**, not small. Flag two things: churn (frequent edits bust the shared
-cache) and low signal density (noise multiplied across many consumers). A large, stable,
-dense anchor is healthy — do not recommend cutting it for size alone.
-
-### Model Routing Assessment
+### Model & Effort Routing Assessment
 
 Review model declarations across skills and subagents against the current lineup (verify
 exact IDs and pricing against the live models/pricing docs before hardcoding numbers):
@@ -246,57 +242,29 @@ exact IDs and pricing against the live models/pricing docs before hardcoding num
 - Subagents without a declared model — recommend the smallest tier that fits: a fast/cheap
   tier (Haiku-class) for research and extraction, a mid tier (Sonnet-class) for analysis,
   the top tier only for hard reasoning or long-horizon agentic work.
+- Effort is a second routing lever, and on Opus 5.5 the main control over how much it
+  thinks. Opus 5.5 at `medium` matches or beats Opus 5 at `high`, and `low` comes close on
+  coding work — so Opus at low/medium effort can be the right call where dropping a tier
+  would lose quality. Weigh both levers, not tier alone. Skills and subagents set this with
+  an `effort:` frontmatter field (`low` | `medium` | `high` | `xhigh` | `max`), which
+  overrides the session level only while that file is active. Reserve `xhigh`/`max` for
+  work with a measured quality gain.
+- Flag prose that tries to control depth ("be thorough," "go deep," "don't overthink")
+  where an effort setting would do it. Lowering effort cuts thinking more reliably than
+  prompt instructions do.
+- Flag any skill that changes effort between requests in a flow — a top-level effort change
+  invalidates the prompt cache.
 - Estimate the effect of right-sizing routing.
 
 ## Output Format
 
-```markdown
-# Context Efficiency Review: {skill-name or "Full Suite"}
-**Generated**: {YYYY-MM-DD HH:MM}
-**Scope**: {single skill | suite (N skills, N context files, N agents) | comparison}
----
+Use the report template in `references/report-template.md`. Return the report in the
+response; write it to a file only when the user asks, at the path they give.
 
-## Score: {N}/24
-**Architecture**: {n}/8 | **Efficiency**: {n}/8 | **Quality**: {n}/8
+## Reference files
 
-## Critical Findings
-{Findings representing real waste or misfiring instructions — each with file:line + fix}
-
-## Recommendations
-{Should-fix findings with specific suggestions}
-
-## Observations
-{Lower-priority findings worth considering}
-
-## Strategic Assessment
-
-### Prioritized Optimization Plan
-**Quick Wins**
-- {finding → fix → leverage}
-
-**Medium Effort**
-- {finding → fix → leverage}
-
-**Architectural Changes**
-- {finding → fix → leverage}
-
-### Cost Model
-| Component | Profile | Leverage of fixes |
-|-----------|---------|-------------------|
-| Cached prefix (CLAUDE.md + context) | {stable&dense / churny / noisy} | {…} |
-| Per-invocation uncached input | {low / moderate / high} | {…} |
-| Output | {constrained / moderate / unconstrained} | {…} |
-
-### Context Anchor Map (suite mode)
-{Table of high-fanout files by fanout, with volatility + signal density}
-
-### Model Routing Assessment
-{Current vs recommended model assignments}
-
-## Methodology
-Lint passes: Architecture & Progressive Disclosure, Signal Density & Redundancy, Output
-Efficiency, Instruction Quality. Scoring: 0-24 across Architecture, Efficiency, Quality.
-Grounded in Anthropic's current guidance (context engineering, prompt caching, Agent Skills).
-Size estimates are approximate (~4 chars/token, tokenizer varies by model); accurate counts
-require the count_tokens endpoint, which does not model caching.
-```
+| Read | When |
+|------|------|
+| `references/suite-mode.md` | `$ARGUMENTS` is `suite` |
+| `references/opus-5-5-checks.md` | The target skill or agent runs on Opus 5.5 |
+| `references/report-template.md` | Writing the final report (every run) |

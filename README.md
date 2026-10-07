@@ -22,14 +22,21 @@ Caught in under two seconds. No LLM calls. Deterministic.
 
 "Tolerate" is not "work correctly."
 
-## Companion: /te-review
+## Companion: /sk-review
 
-This repo also includes [`/te-review`](skills/te-review.md), an LLM-powered deep audit skill that goes beyond structural validation — analyzing signal density, cache-stability, progressive disclosure, and instruction quality. It produces a scored assessment (0-24) with a prioritized, leverage-ranked optimization plan.
+This repo also includes [`/sk-review`](skills/sk-review/SKILL.md), an LLM-powered deep audit skill that goes beyond structural validation — analyzing signal density, cache-stability, progressive disclosure, instruction quality, and model/effort routing. It produces a scored assessment (0-24) with a prioritized, leverage-ranked optimization plan.
 
-claude-skill-lint catches structural bugs deterministically in CI. `/te-review` is an on-demand complement for deeper optimization.
+claude-skill-lint catches structural bugs deterministically in CI. `/sk-review` is an on-demand complement for deeper optimization.
+
+It ships as a standard Agent Skill directory (`SKILL.md` plus `references/`). Install it as a user skill:
 
 ```bash
-curl -o ~/.claude/commands/te-review.md https://raw.githubusercontent.com/shinytoyrobots/claude-skills-linter/main/skills/te-review.md
+base=https://raw.githubusercontent.com/shinytoyrobots/claude-skills-linter/main/skills/sk-review
+mkdir -p ~/.claude/skills/sk-review/references
+curl -fsSo ~/.claude/skills/sk-review/SKILL.md "$base/SKILL.md"
+for f in suite-mode opus-5-5-checks report-template; do
+  curl -fsSo ~/.claude/skills/sk-review/references/$f.md "$base/references/$f.md"
+done
 ```
 
 ## What It Actually Found
