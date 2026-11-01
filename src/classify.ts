@@ -14,6 +14,17 @@ const SEGMENT_TYPE_MAP: ReadonlyMap<string, FileType> = new Map([
 ]);
 
 /**
+ * Index of the `references` segment in `skills/{name}/references/`, or -1. A directory named
+ * `references` nested below that one doesn't count, since it isn't the skill's.
+ */
+export function skillReferencesIndex(segments: string[]): number {
+  for (let i = segments.length - 2; i >= 2; i--) {
+    if (segments[i] === 'references' && segments[i - 2] === 'skills') return i;
+  }
+  return -1;
+}
+
+/**
  * Classify a skill file by its path and frontmatter presence.
  *
  * Classification rules (in priority order):
@@ -49,8 +60,7 @@ export function classifyFile(
   const segments = filePath.split('/');
 
   // Bundled with one skill, so this outranks any directory nested beneath references/.
-  const referencesIdx = segments.lastIndexOf('references');
-  if (referencesIdx >= 2 && segments[referencesIdx - 2] === 'skills') {
+  if (skillReferencesIndex(segments) !== -1) {
     return 'reference';
   }
 

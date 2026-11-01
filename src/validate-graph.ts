@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { basename, dirname, resolve, relative, isAbsolute } from 'node:path';
 import type { ExtractResult, Config, RepoFormat, ValidationResult } from './types.js';
+import { skillReferencesIndex } from './classify.js';
 import { tokenizeAllowedTools, checkNameDirMismatch } from './validate-frontmatter.js';
 
 /**
@@ -134,7 +135,7 @@ function canonicalName(filePath: string, fileType: string): string {
   // in two skills don't collide, and a flat `context/{name}` path can't resolve to it.
   if (fileType === 'reference') {
     const segments = filePath.split('/');
-    const idx = segments.lastIndexOf('references');
+    const idx = skillReferencesIndex(segments);
     return `skills/${segments[idx - 1]}/references/${segments.slice(idx + 1).join('/')}`;
   }
   // For skill files (SKILL.md), identity comes from the parent directory name
@@ -912,7 +913,7 @@ function detectSkillBundleRefs(
       if (deferMdRefs && !hasVar && raw.toLowerCase().endsWith('.md')) continue;
       // suite-monorepo resolves these .md forms itself, so that scope rules apply to them.
       if (
-        format === 'suite-monorepo' && !fromGrant && raw.replace(/#.*$/, '').toLowerCase().endsWith('.md') &&
+        format === 'suite-monorepo' && !fromGrant && !raw.includes('${CLAUDE_PROJECT_DIR}') && raw.replace(/#.*$/, '').toLowerCase().endsWith('.md') &&
         (fromLink || /^(?:\$\{CLAUDE_SKILL_DIR\}\/|\.\.?\/|references?\/)/.test(raw))
       ) continue;
 

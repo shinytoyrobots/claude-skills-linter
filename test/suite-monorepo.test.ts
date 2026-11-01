@@ -56,6 +56,7 @@ describe('classifyFile: references', () => {
     assert.equal(classifyFile('suite/skills/foo/references/bar.md', false), 'reference');
     assert.equal(classifyFile('suite/skills/foo/references/nested/bar.md', true), 'reference');
     assert.equal(classifyFile('suite/skills/foo/references/context/bar.md', true), 'reference');
+    assert.equal(classifyFile('suite/skills/foo/references/nested/references/bar.md', true), 'reference');
   });
 
   it('leaves a references/ directory outside a skill as it was', () => {
@@ -167,6 +168,21 @@ describe('graph: references/', () => {
       't/skills/b/references/EXAMPLES.md': 'For b.\n',
     });
     assert.deepEqual(await graph(root), []);
+  });
+
+  it('keeps a nested references/ directory scoped to its skill', async () => {
+    const root = repo({
+      's/skills/a/SKILL.md': skill('a', 'See `references/nested/references/x.md`.'),
+      's/skills/a/references/nested/references/x.md': 'For a.\n',
+      's/skills/b/SKILL.md': skill('b', 'See `references/nested/references/x.md`.'),
+      's/skills/b/references/nested/references/x.md': 'For b.\n',
+    });
+    assert.deepEqual(await graph(root), []);
+  });
+
+  it('keeps checking ${CLAUDE_PROJECT_DIR} markdown links', async () => {
+    const root = repo({ 's/skills/a/SKILL.md': skill('a', 'See [p](${CLAUDE_PROJECT_DIR}/gone.md).') });
+    assert.equal(withRule(await graph(root), 'broken-reference').length, 1);
   });
 
   it('reports a reference with no reader as orphaned', async () => {
