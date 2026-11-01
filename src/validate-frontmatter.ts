@@ -131,6 +131,7 @@ const PORTABLE_FIELDS = new Set([
  * SR-010: warn (never error) when a skill's frontmatter `name` differs from its
  * parent directory name, naming which identifier governs invocation in the detected
  * format. Defaults to "directory name governs" when the format is undetermined.
+ * In suite-monorepo format the two must match, so a mismatch is an error.
  */
 export function checkNameDirMismatch(
   result: ExtractResult,
@@ -148,7 +149,7 @@ export function checkNameDirMismatch(
   return {
     filePath: result.filePath,
     rule: 'name-dir-mismatch',
-    severity: 'warning',
+    severity: format === 'suite-monorepo' ? 'error' : 'warning',
     message,
   };
 }
@@ -630,7 +631,8 @@ export async function validateFrontmatter(
 
     // SR-010: name↔directory mismatch (warning). Level-1-gated to keep the default
     // level quiet (INV-3). Fires from the lint pass so authors running `lint` see it.
-    if (effectiveLevel >= 1) {
+    // suite-monorepo enforces it at every level.
+    if (effectiveLevel >= 1 || opts?.format === 'suite-monorepo') {
       const mismatch = checkNameDirMismatch(result, opts?.format);
       if (mismatch) validationResults.push({ ...mismatch, effectiveLevel });
     }

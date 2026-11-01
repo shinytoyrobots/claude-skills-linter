@@ -19,9 +19,10 @@ const SEGMENT_TYPE_MAP: ReadonlyMap<string, FileType> = new Map([
  * Classification rules (in priority order):
  * 1. Basename `SKILL.md` (case-sensitive) → skill
  * 2. Basename `README.md` or `CLAUDE.md` (case-insensitive) → readme
- * 3. Rightmost known directory segment → command | agent | context | skill
- * 4. Agent path + hasFrontmatter false → legacy-agent
- * 5. No match → unknown
+ * 3. Inside `skills/{name}/references/` → reference
+ * 4. Rightmost known directory segment → command | agent | context | skill
+ * 5. Agent path + hasFrontmatter false → legacy-agent
+ * 6. No match → unknown
  */
 export function classifyFile(
   filePath: string,
@@ -46,6 +47,13 @@ export function classifyFile(
 
   // Split into segments and find the rightmost known directory segment (AC-7).
   const segments = filePath.split('/');
+
+  // Bundled with one skill, so this outranks any directory nested beneath references/.
+  const referencesIdx = segments.lastIndexOf('references');
+  if (referencesIdx >= 2 && segments[referencesIdx - 2] === 'skills') {
+    return 'reference';
+  }
+
   let matchedType: FileType | undefined;
 
   for (const segment of segments) {

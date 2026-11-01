@@ -16,6 +16,8 @@ export interface GraphOptions {
   paths?: string[];
   format: 'terminal' | 'json' | 'github';
   strict: boolean;
+  /** Exit 1 instead of 0 when no files were checked. */
+  failOnEmpty?: boolean;
 }
 
 /**
@@ -23,7 +25,7 @@ export interface GraphOptions {
  *
  * Exit codes:
  *   0 — no errors (or only warnings without --strict)
- *   1 — validation errors found (or warnings with --strict)
+ *   1 — validation errors found (or warnings with --strict, or no files with --fail-on-empty)
  *
  * ConfigError is NOT caught here — the caller (cli.ts) handles it for exit code 2.
  */
@@ -76,6 +78,10 @@ export async function runGraph(options: GraphOptions): Promise<number> {
       process.stdout.write('[]\n');
     } else {
       process.stdout.write('0 files checked\n');
+    }
+    if (options.failOnEmpty) {
+      process.stderr.write('error: 0 files checked (--fail-on-empty)\n');
+      return 1;
     }
     return 0;
   }

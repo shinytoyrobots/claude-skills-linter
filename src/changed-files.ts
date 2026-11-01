@@ -17,7 +17,7 @@ export class ChangedFilesError extends Error {
 /**
  * Get the list of changed .md files between `base` and HEAD.
  *
- * Runs `git diff --name-only --diff-filter=ACM {base}...HEAD -- '*.md'`
+ * Runs `git diff --name-only --diff-filter=ACMR {base}...HEAD -- '*.md'`
  * and resolves repo-relative paths to absolute paths.
  *
  * @param base - Git ref to diff against (e.g. "origin/main", "main")
@@ -40,7 +40,7 @@ export function getChangedFiles(base: string): string[] {
   try {
     diffOutput = execFileSync(
       'git',
-      ['diff', '--name-only', '--diff-filter=ACM', `${base}...HEAD`, '--', '*.md'],
+      ['diff', '--name-only', '--diff-filter=ACMR', `${base}...HEAD`, '--', '*.md'],
       { encoding: 'utf-8', cwd: repoRoot },
     ).trim();
   } catch (err) {

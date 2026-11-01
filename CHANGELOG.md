@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **`suite-monorepo` format** — explicit-only (`format: suite-monorepo`), for a repo moving `{suite}/commands/{name}.md` to `{suite}/skills/{name}/SKILL.md` a skill at a time. Accepts both layouts and both install-path forms, resolves `references/` against the owning skill, counts `SKILL.md` as a referrer, and makes `name-dir-mismatch` an error at every level. See the README.
+- **`reference` file type** with the identity `skills/{skill}/references/{path}`.
+- **`--fail-on-empty`** on `lint` and `graph` — exit 1 when no files were checked, so a gate can't pass by scanning nothing.
+
+### Changed
+
+- Files in `skills/{name}/references/` are no longer classified `unknown` in any format, so same-named files in two skills stop failing `graph` with `name-collision`. Plugin and project-skills repos get this fix too.
+
+### Fixed
+
+- `--changed-only` now includes renamed files (`--diff-filter=ACMR`). A moved file with a small edit was skipped, so a rename-only change linted nothing.
+- `npm install` from a git ref now builds `dist/` through a `prepare` script. `dist/` stopped being committed after 0.3.0, which left git-pinned installs without a working binary.
+
 ## [0.7.1] - 2026-10-07
 
 No linter changes. The bundled companion audit skill is updated and renamed; the npm package is unchanged apart from the version and README.

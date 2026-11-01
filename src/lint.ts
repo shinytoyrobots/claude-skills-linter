@@ -31,6 +31,8 @@ export interface LintOptions {
   portable?: boolean;
   /** Also run the official `claude plugin validate` and merge its findings (plugin formats only). */
   runPluginValidate?: boolean;
+  /** Exit 1 instead of 0 when no files were checked. */
+  failOnEmpty?: boolean;
 }
 
 /** Input to the shared validation pipeline. */
@@ -103,8 +105,12 @@ async function runPipeline(input: PipelineInput): Promise<number> {
 }
 
 /** Zero-files early-exit helper (shared between both branches). */
-function reportZeroFiles(outputFormat: LintOptions['format']): number {
+function reportZeroFiles(outputFormat: LintOptions['format'], failOnEmpty?: boolean): number {
   process.stdout.write(outputFormat === 'json' ? '[]\n' : '0 files checked\n');
+  if (failOnEmpty) {
+    process.stderr.write('error: 0 files checked (--fail-on-empty)\n');
+    return 1;
+  }
   return 0;
 }
 
@@ -158,7 +164,7 @@ export async function runLint(options: LintOptions): Promise<number> {
   // --changed-only branch: lint only files changed since base ref.
   if (options.changedOnly) {
     const changedFiles = applyIgnorePaths(getChangedFiles(options.base), config.ignore);
-    if (changedFiles.length === 0) return reportZeroFiles(options.format);
+    if (changedFiles.length === 0) return reportZeroFiles(options.format, options.failOnEmpty);
 
     const results = changedFiles.map((f) => extractFile(f));
     const validationResults = await validateFrontmatter(results, options.level, config, {
@@ -182,7 +188,7 @@ export async function runLint(options: LintOptions): Promise<number> {
     results = results.filter((r) => !config.ignore.some((p) => minimatch(r.filePath, p, { matchBase: true })));
   }
 
-  if (results.length === 0) return reportZeroFiles(options.format);
+  if (results.length === 0) return reportZeroFiles(options.format, options.failOnEmpty);
 
   const validationResults = await validateFrontmatter(results, options.level, config, {
     format,

@@ -4,7 +4,7 @@
  */
 
 /** Detected repository format for skill file organization. */
-export type RepoFormat = 'legacy-commands' | 'plugin' | 'multi-plugin' | 'project-skills';
+export type RepoFormat = 'legacy-commands' | 'plugin' | 'multi-plugin' | 'project-skills' | 'suite-monorepo';
 
 /** Classification of a skill file based on its path. */
 export type FileType =
@@ -13,6 +13,7 @@ export type FileType =
   | 'legacy-agent'
   | 'context'
   | 'skill'
+  | 'reference'
   | 'readme'
   | 'unknown';
 

@@ -8,13 +8,14 @@ import { join } from 'node:path';
 import { ConfigError } from './config.js';
 import type { Config, RepoFormat } from './types.js';
 
-const VALID_FORMATS: readonly RepoFormat[] = ['legacy-commands', 'plugin', 'multi-plugin', 'project-skills'];
+const VALID_FORMATS: readonly RepoFormat[] = ['legacy-commands', 'plugin', 'multi-plugin', 'project-skills', 'suite-monorepo'];
 
 /**
  * Detect the repository format for skill file organization.
  *
  * Priority order (first match wins):
- * 1. Config override (format field in .skill-lint.yaml)
+ * 1. Config override (format field in .skill-lint.yaml). This is the only way to get
+ *    suite-monorepo: its signals overlap the legacy and project-skills layouts mid-migration.
  * 2. multi-plugin: marketplace.json + plugins with plugin.json
  * 3. plugin: marketplace.json + skills/SKILL.md files
  * 4. project-skills: .claude/skills/{name}/SKILL.md
