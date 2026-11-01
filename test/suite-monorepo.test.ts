@@ -213,6 +213,28 @@ describe('graph: references/', () => {
     assert.match(broken[0].message, /leaves the skill directory/);
   });
 
+  it('flags an out-of-directory path even when another form names the same target', async () => {
+    const root = repo({
+      's/skills/a/SKILL.md': skill('a', 'See `~/.claude/skills/b/SKILL.md` and [b](../b/SKILL.md).'),
+      's/skills/b/SKILL.md': skill('b'),
+    });
+    const broken = withRule(await graph(root), 'broken-reference');
+    assert.equal(broken.length, 1);
+    assert.match(broken[0].message, /leaves the skill directory/);
+  });
+
+  it('keeps checking bare bundle paths the suite resolver does not scan', async () => {
+    const root = repo({ 's/skills/a/SKILL.md': skill('a', 'Read `shared/gone.md` and `templates/gone.md`.') });
+    assert.equal(withRule(await graph(root), 'broken-reference').length, 2);
+  });
+
+  it('keeps checking .md paths in allowed-tools grants', async () => {
+    const root = repo({
+      's/skills/a/SKILL.md': skill('a', 'Body.', 'allowed-tools: Bash(cat ./gone.md)\n'),
+    });
+    assert.equal(withRule(await graph(root), 'broken-reference').length, 1);
+  });
+
   it('does not double-report a broken markdown link', async () => {
     const root = repo({ 's/skills/a/SKILL.md': skill('a', 'See [x](references/gone.md) and [y](${CLAUDE_SKILL_DIR}/references/gone2.md).') });
     assert.equal(withRule(await graph(root), 'broken-reference').length, 2);

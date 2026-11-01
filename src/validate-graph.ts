@@ -427,11 +427,7 @@ function resolveSuiteMonorepoRefs(
   const skillDir = dirname(sourceFilePath);
   for (const raw of extractSkillLocalRefs(bodyText)) {
     const absPath = resolve(skillDir, raw.replace('${CLAUDE_SKILL_DIR}/', ''));
-    const target = pathToFile.get(absPath);
-    const normalized = target ? canonicalName(target.filePath, target.fileType) : raw;
-    if (seen.has(normalized)) continue;
-    seen.add(normalized);
-
+    // Before deduplicating: another form naming the same target doesn't make this path valid.
     if (relative(skillDir, absPath).startsWith('..')) {
       resolved.push({
         raw,
@@ -439,7 +435,15 @@ function resolveSuiteMonorepoRefs(
         isRelative: true,
         brokenMessage: `Broken reference to "${raw}" — it leaves the skill directory, so it won't resolve once installed`,
       });
-    } else if (filePathSet.has(absPath) || existsSync(absPath)) {
+      continue;
+    }
+
+    const target = pathToFile.get(absPath);
+    const normalized = target ? canonicalName(target.filePath, target.fileType) : raw;
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+
+    if (filePathSet.has(absPath) || existsSync(absPath)) {
       resolved.push({ raw, normalized, isRelative: true, resolvedPath: absPath });
     } else {
       resolved.push({ raw, normalized, isRelative: true });
@@ -888,13 +892,13 @@ function detectSkillBundleRefs(
     const scanBody = stripFencedCodeBlocks(originalBody);
 
     // Collect (raw, fromMarkdownLink) candidates.
-    const candidates: Array<{ raw: string; fromLink: boolean }> = [];
+    const candidates: Array<{ raw: string; fromLink: boolean; fromGrant?: boolean }> = [];
     for (const m of scanBody.matchAll(MARKDOWN_LINK_PATTERN)) candidates.push({ raw: m[1], fromLink: true });
     for (const m of scanBody.matchAll(BARE_BUNDLE_PATTERN)) candidates.push({ raw: m[0], fromLink: false });
-    for (const p of bashGrantPaths(file.data['allowed-tools'])) candidates.push({ raw: p, fromLink: false });
+    for (const p of bashGrantPaths(file.data['allowed-tools'])) candidates.push({ raw: p, fromLink: false, fromGrant: true });
 
     const seen = new Set<string>();
-    for (const { raw, fromLink } of candidates) {
+    for (const { raw, fromLink, fromGrant } of candidates) {
       if (seen.has(raw)) continue;
       seen.add(raw);
       if (isSkippableRef(raw)) continue;
@@ -906,8 +910,11 @@ function detectSkillBundleRefs(
       // A ${VAR}/Bash-grant ref is always ours; a plain .md ref belongs to the existing
       // resolver in plugin formats.
       if (deferMdRefs && !hasVar && raw.toLowerCase().endsWith('.md')) continue;
-      // suite-monorepo resolves its own .md references, so that scope rules apply to them.
-      if (format === 'suite-monorepo' && !raw.includes('${CLAUDE_PROJECT_DIR}') && raw.replace(/#.*$/, '').toLowerCase().endsWith('.md')) continue;
+      // suite-monorepo resolves these .md forms itself, so that scope rules apply to them.
+      if (
+        format === 'suite-monorepo' && !fromGrant && raw.replace(/#.*$/, '').toLowerCase().endsWith('.md') &&
+        (fromLink || /^(?:\$\{CLAUDE_SKILL_DIR\}\/|\.\.?\/|references?\/)/.test(raw))
+      ) continue;
 
       const expanded = expandSkillVars(raw, skillDir, projectRoot);
       const absPath = isAbsolute(expanded) ? expanded : resolve(skillDir, expanded);
