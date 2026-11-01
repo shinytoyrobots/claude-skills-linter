@@ -251,6 +251,29 @@ describe('graph: references/', () => {
     assert.equal(withRule(await graph(root), 'broken-reference').length, 1);
   });
 
+  it('checks a grant even when the body mentions the same path as an illustration', async () => {
+    const root = repo({
+      's/skills/a/SKILL.md': skill('a', 'Syntax: `[x](./gone.md)`.', 'allowed-tools: Bash(cat ./gone.md)\n'),
+    });
+    assert.equal(withRule(await graph(root), 'broken-reference').length, 1);
+  });
+
+  it('does not truncate a longer path or a glob to a .md reference', async () => {
+    const root = repo({
+      's/skills/a/SKILL.md': skill('a', [
+        'Copy `references/guide.md.template`, `${CLAUDE_SKILL_DIR}/references/x.md.bak` and ./y.md.tpl.',
+        'Globs: `references/guide.md*`.',
+        'Also `~/.claude/context/foo.md.bak`, `~/.claude/skills/a/references/z.md.old`.',
+      ].join('\n')),
+    });
+    assert.deepEqual(await graph(root), []);
+  });
+
+  it('still reads a path that ends a sentence', async () => {
+    const root = repo({ 's/skills/a/SKILL.md': skill('a', 'See references/gone.md. Then ./gone2.md.') });
+    assert.equal(withRule(await graph(root), 'broken-reference').length, 2);
+  });
+
   it('does not double-report a broken markdown link', async () => {
     const root = repo({ 's/skills/a/SKILL.md': skill('a', 'See [x](references/gone.md) and [y](${CLAUDE_SKILL_DIR}/references/gone2.md).') });
     assert.equal(withRule(await graph(root), 'broken-reference').length, 2);

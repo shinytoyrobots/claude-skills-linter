@@ -33,20 +33,23 @@ const REF_PATTERN =
  * `~/.claude/`. Kept separate so other formats keep resolving exactly what they did.
  */
 const SUITE_REF_PATTERN =
-  /(?<![\w.\-\/])(?:~\/\.claude\/commands\/(?:(?:agents|context|commands)\/)+|~\/\.claude\/(?:agents|context)\/|(?:(?:agents|context|commands)\/)+)[\w][\w.\-]*\.md/g;
+  /(?<![\w.\-\/])(?:~\/\.claude\/commands\/(?:(?:agents|context|commands)\/)+|~\/\.claude\/(?:agents|context)\/|(?:(?:agents|context|commands)\/)+)[\w][\w.\-]*\.md(?![\w\-\/*?]|\.[\w\-\/*?])/g;
+
+// Each suite-monorepo pattern ends at a path boundary, so `x.md.template` and `x.md*` don't
+// truncate to `x.md`, while a sentence-ending period still does.
 
 /** Installed form of a skill or one of its bundled references (suite-monorepo). */
 const INSTALLED_SKILL_REF_PATTERN =
-  /(?<![\w.\-\/])~\/\.claude\/skills\/[\w][\w.\-]*\/(?:SKILL\.md|references\/[\w][\w.\-\/]*\.md)/g;
+  /(?<![\w.\-\/])~\/\.claude\/skills\/[\w][\w.\-]*\/(?:SKILL\.md|references\/[\w][\w.\-\/]*\.md)(?![\w\-\/*?]|\.[\w\-\/*?])/g;
 
 /** `${CLAUDE_SKILL_DIR}/...md` (suite-monorepo). An explicit reference, so fences still count. */
-const SKILL_DIR_REF_PATTERN = /\$\{CLAUDE_SKILL_DIR\}\/[\w.\-\/]*\.md/g;
+const SKILL_DIR_REF_PATTERN = /\$\{CLAUDE_SKILL_DIR\}\/[\w.\-\/]*\.md(?![\w\-\/*?]|\.[\w\-\/*?])/g;
 
 /** Bare `references/foo.md`, plus the singular form so a stale one is caught (suite-monorepo). */
-const BARE_REFERENCES_PATTERN = /(?<![\w.\-\/$}])(?:\.\/)?references?\/[\w][\w.\-\/]*\.md/g;
+const BARE_REFERENCES_PATTERN = /(?<![\w.\-\/$}])(?:\.\/)?references?\/[\w][\w.\-\/]*\.md(?![\w\-\/*?]|\.[\w\-\/*?])/g;
 
 /** `./foo.md` and `../foo.md` (suite-monorepo). Placeholders and globs never match. */
-const SKILL_RELATIVE_PATTERN = /(?<![\w.~\/\-])\.\.?\/[^\s)`'"<>{}*?]*\.md/g;
+const SKILL_RELATIVE_PATTERN = /(?<![\w.~\/\-])\.\.?\/[^\s)`'"<>{}*?]*\.md(?![\w\-\/*?]|\.[\w\-\/*?])/g;
 
 /**
  * Regex to extract relative path references from body text.
@@ -900,6 +903,12 @@ function detectSkillBundleRefs(
 
     const seen = new Set<string>();
     for (const { raw, fromLink, fromGrant } of candidates) {
+      // suite-monorepo resolves these .md forms itself, so that scope rules apply to them. This
+      // comes before `seen`, so a body mention it ignores can't hide the same path in a grant.
+      if (
+        format === 'suite-monorepo' && !fromGrant && !raw.includes('${CLAUDE_PROJECT_DIR}') && raw.replace(/#.*$/, '').toLowerCase().endsWith('.md') &&
+        (fromLink || /^(?:\$\{CLAUDE_SKILL_DIR\}\/|\.\.?\/|references?\/)/.test(raw))
+      ) continue;
       if (seen.has(raw)) continue;
       seen.add(raw);
       if (isSkippableRef(raw)) continue;
@@ -911,11 +920,6 @@ function detectSkillBundleRefs(
       // A ${VAR}/Bash-grant ref is always ours; a plain .md ref belongs to the existing
       // resolver in plugin formats.
       if (deferMdRefs && !hasVar && raw.toLowerCase().endsWith('.md')) continue;
-      // suite-monorepo resolves these .md forms itself, so that scope rules apply to them.
-      if (
-        format === 'suite-monorepo' && !fromGrant && !raw.includes('${CLAUDE_PROJECT_DIR}') && raw.replace(/#.*$/, '').toLowerCase().endsWith('.md') &&
-        (fromLink || /^(?:\$\{CLAUDE_SKILL_DIR\}\/|\.\.?\/|references?\/)/.test(raw))
-      ) continue;
 
       const expanded = expandSkillVars(raw, skillDir, projectRoot);
       const absPath = isAbsolute(expanded) ? expanded : resolve(skillDir, expanded);
