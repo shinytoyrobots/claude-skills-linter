@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { basename, dirname, resolve, relative, isAbsolute } from 'node:path';
 import type { ExtractResult, Config, RepoFormat, ValidationResult } from './types.js';
+import { skillReferencesIndex } from './classify.js';
 import { tokenizeAllowedTools, checkNameDirMismatch } from './validate-frontmatter.js';
 
 /**
@@ -26,6 +27,29 @@ const INSTALLED_PREFIX = '~/.claude/commands/';
  */
 const REF_PATTERN =
   /(?<![\w.\-\/])(?:~\/\.claude\/commands\/)?(?:(?:agents|context|commands)\/)+[\w][\w.\-]*\.md/g;
+
+/**
+ * suite-monorepo form of REF_PATTERN: also accepts the install roots that sit directly under
+ * `~/.claude/`. Kept separate so other formats keep resolving exactly what they did.
+ */
+const SUITE_REF_PATTERN =
+  /(?<![\w.\-\/])(?:~\/\.claude\/commands\/(?:(?:agents|context|commands)\/)+|~\/\.claude\/(?:agents|context)\/|(?:(?:agents|context|commands)\/)+)[\w][\w.\-]*\.md(?![\w\-\/*?]|\.[\w\-\/*?])/g;
+
+// Each suite-monorepo pattern ends at a path boundary, so `x.md.template` and `x.md*` don't
+// truncate to `x.md`, while a sentence-ending period still does.
+
+/** Installed form of a skill or one of its bundled references (suite-monorepo). */
+const INSTALLED_SKILL_REF_PATTERN =
+  /(?<![\w.\-\/])~\/\.claude\/skills\/[\w][\w.\-]*\/(?:SKILL\.md|references\/[\w][\w.\-\/]*\.md)(?![\w\-\/*?]|\.[\w\-\/*?])/g;
+
+/** `${CLAUDE_SKILL_DIR}/...md` (suite-monorepo). An explicit reference, so fences still count. */
+const SKILL_DIR_REF_PATTERN = /\$\{CLAUDE_SKILL_DIR\}\/[\w.\-\/]*\.md(?![\w\-\/*?]|\.[\w\-\/*?])/g;
+
+/** Bare `references/foo.md`, plus the singular form so a stale one is caught (suite-monorepo). */
+const BARE_REFERENCES_PATTERN = /(?<![\w.\-\/$}])(?:\.\/)?references?\/[\w][\w.\-\/]*\.md(?![\w\-\/*?]|\.[\w\-\/*?])/g;
+
+/** `./foo.md` and `../foo.md` (suite-monorepo). Placeholders and globs never match. */
+const SKILL_RELATIVE_PATTERN = /(?<![\w.~\/\-])\.\.?\/[^\s)`'"<>{}*?]*\.md(?![\w\-\/*?]|\.[\w\-\/*?])/g;
 
 /**
  * Regex to extract relative path references from body text.
@@ -76,6 +100,14 @@ function normalizePath(raw: string): string {
   return raw;
 }
 
+/** Map a raw suite-monorepo reference to the canonical name of its target. */
+function normalizeSuitePath(raw: string): string {
+  const path = raw.startsWith(INSTALLED_PREFIX)
+    ? raw.slice(INSTALLED_PREFIX.length)
+    : raw.replace(/^~\/\.claude\//, '');
+  return path.replace(/^(skills\/[^/]+)\/SKILL\.md$/, '$1');
+}
+
 /**
  * Find the 1-based line number where `needle` appears in `text`.
  * Returns undefined if not found.
@@ -102,6 +134,13 @@ function findLine(text: string, needle: string): number | undefined {
  * plugin-based, or deeply nested.
  */
 function canonicalName(filePath: string, fileType: string): string {
+  // A reference file belongs to one skill, so its identity keeps the skill: same-named files
+  // in two skills don't collide, and a flat `context/{name}` path can't resolve to it.
+  if (fileType === 'reference') {
+    const segments = filePath.split('/');
+    const idx = skillReferencesIndex(segments);
+    return `skills/${segments[idx - 1]}/references/${segments.slice(idx + 1).join('/')}`;
+  }
   // For skill files (SKILL.md), identity comes from the parent directory name
   // (the skill folder), not the filename — every skill file is named SKILL.md
   // so using the filename would produce collisions in multi-plugin repos.
@@ -234,6 +273,8 @@ interface ResolvedRef {
   isRelative: boolean;
   /** Absolute file path this ref resolves to (only set for relative refs that resolved). */
   resolvedPath?: string;
+  /** Why this ref is broken, when the default message would not say. */
+  brokenMessage?: string;
 }
 
 /**
@@ -310,10 +351,117 @@ function escapesRepo(resolvedPath: string, rootDir: string): boolean {
   return rel.startsWith('..');
 }
 
+/** The skill that owns a canonical `skills/{skill}/references/...` name, if it is one. */
+function referenceOwner(canonical: string): string | undefined {
+  return /^skills\/([^/]+)\/references\//.exec(canonical)?.[1];
+}
+
+/** The skill a file belongs to: its own for a SKILL.md or one of its references. */
+function owningSkill(file: ExtractResult | undefined): string | undefined {
+  if (file?.fileType === 'skill') return basename(dirname(file.filePath));
+  if (file?.fileType === 'reference') {
+    return referenceOwner(canonicalName(file.filePath, file.fileType));
+  }
+  return undefined;
+}
+
+/**
+ * Raw references a SKILL.md resolves against its own directory. `${CLAUDE_SKILL_DIR}` is explicit,
+ * so it always counts. Fenced examples don't count, and neither do `./x.md` or `[text](x.md)` in
+ * inline code, where they illustrate syntax. `includeFenced` lifts both limits, for finding a reader.
+ */
+function extractSkillLocalRefs(bodyText: string, includeFenced = false): string[] {
+  const scanned = includeFenced ? bodyText : stripFencedCodeBlocks(bodyText);
+  const prose = includeFenced ? bodyText : scanned.replace(INLINE_CODE_PATTERN, ' ');
+  const raws: string[] = [];
+  for (const m of bodyText.matchAll(SKILL_DIR_REF_PATTERN)) raws.push(m[0]);
+  for (const m of scanned.matchAll(BARE_REFERENCES_PATTERN)) raws.push(m[0]);
+  for (const m of prose.matchAll(SKILL_RELATIVE_PATTERN)) raws.push(m[0]);
+  for (const m of prose.matchAll(MARKDOWN_LINK_PATTERN)) {
+    const target = m[1].replace(/#.*$/, '');
+    if (!target.endsWith('.md') || isSkippableRef(target)) continue;
+    // Absolute, installed, and {type}/{name} targets are canonical references, not local ones.
+    if (/^(?:\/|~|\$|(?:agents|context|commands)\/)/.test(target)) continue;
+    raws.push(target);
+  }
+  return [...new Set(raws)];
+}
+
+/**
+ * Resolve references in suite-monorepo format, where both layouts and both install-path forms
+ * coexist. Every file gets canonical resolution. Only SKILL.md files get relative and bare
+ * resolution: a command's `../reference/` links keep behaving as they do in legacy-commands.
+ */
+function resolveSuiteMonorepoRefs(
+  bodyText: string,
+  sourceFilePath: string,
+  filePathSet: Set<string>,
+  pathToFile: Map<string, ExtractResult>,
+): ResolvedRef[] {
+  const resolved: ResolvedRef[] = [];
+  const seen = new Set<string>();
+  const source = pathToFile.get(sourceFilePath);
+  const sourceSkill = owningSkill(source);
+
+  const rawRefs = [
+    ...bodyText.matchAll(SUITE_REF_PATTERN),
+    ...bodyText.matchAll(INSTALLED_SKILL_REF_PATTERN),
+  ].map((m) => m[0]);
+
+  for (const raw of rawRefs) {
+    const normalized = normalizeSuitePath(raw);
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+
+    const owner = referenceOwner(normalized);
+    if (owner !== undefined && owner !== sourceSkill) {
+      resolved.push({
+        raw,
+        normalized: raw,
+        isRelative: false,
+        brokenMessage: `Broken reference to "${raw}" — it is bundled with skill "${owner}" and resolves only from that skill`,
+      });
+    } else {
+      resolved.push({ raw, normalized, isRelative: false });
+    }
+  }
+
+  if (source?.fileType !== 'skill') return resolved;
+
+  const skillDir = dirname(sourceFilePath);
+  for (const raw of extractSkillLocalRefs(bodyText)) {
+    const absPath = resolve(skillDir, raw.replace('${CLAUDE_SKILL_DIR}/', ''));
+    // Before deduplicating: another form naming the same target doesn't make this path valid.
+    if (relative(skillDir, absPath).startsWith('..')) {
+      resolved.push({
+        raw,
+        normalized: raw,
+        isRelative: true,
+        brokenMessage: `Broken reference to "${raw}" — it leaves the skill directory, so it won't resolve once installed`,
+      });
+      continue;
+    }
+
+    const target = pathToFile.get(absPath);
+    const normalized = target ? canonicalName(target.filePath, target.fileType) : raw;
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+
+    if (filePathSet.has(absPath) || existsSync(absPath)) {
+      resolved.push({ raw, normalized, isRelative: true, resolvedPath: absPath });
+    } else {
+      resolved.push({ raw, normalized, isRelative: true });
+    }
+  }
+
+  return resolved;
+}
+
 /**
  * Resolve all references from a file's body text, using the appropriate
  * strategy based on repo format.
  *
+ * For suite-monorepo: see resolveSuiteMonorepoRefs.
  * For legacy-commands: canonical name resolution only.
  * For plugin/multi-plugin: relative path resolution first, then canonical fallback.
  */
@@ -329,6 +477,10 @@ function resolveAllRefs(
 ): ResolvedRef[] {
   const resolved: ResolvedRef[] = [];
   const seenNormalized = new Set<string>();
+
+  if (format === 'suite-monorepo') {
+    return resolveSuiteMonorepoRefs(bodyText, sourceFilePath, filePathSet, pathToFile);
+  }
 
   const isPluginFormat = format === 'plugin' || format === 'multi-plugin';
 
@@ -569,7 +721,16 @@ function detectBrokenRefs(
     for (const ref of refs) {
       if (ref.resolvedPath) continue; // Successfully resolved via relative path.
 
-      if (ref.isRelative) {
+      if (ref.brokenMessage) {
+        const line = findLine(bodyText, ref.raw);
+        results.push({
+          filePath: file.filePath,
+          rule: 'broken-reference',
+          severity: 'error',
+          message: ref.brokenMessage,
+          ...(line !== undefined ? { line } : {}),
+        });
+      } else if (ref.isRelative) {
         // Relative ref that didn't resolve.
         const line = findLine(bodyText, ref.raw);
         const absPath = rootDir
@@ -624,6 +785,9 @@ const BARE_BUNDLE_PATTERN = new RegExp(
 
 /** Fenced code blocks (``` or ~~~). Stripped before reference scanning (adv-3 / INV-1). */
 const FENCED_BLOCK_PATTERN = /(^|\n)[ \t]*(```|~~~)[\s\S]*?\2[ \t]*(?=\n|$)/g;
+
+/** Inline code span on one line. */
+const INLINE_CODE_PATTERN = /`[^`\n]*`/g;
 
 function stripFencedCodeBlocks(text: string): string {
   return text.replace(FENCED_BLOCK_PATTERN, '\n');
@@ -732,13 +896,20 @@ function detectSkillBundleRefs(
     const scanBody = stripFencedCodeBlocks(originalBody);
 
     // Collect (raw, fromMarkdownLink) candidates.
-    const candidates: Array<{ raw: string; fromLink: boolean }> = [];
+    const candidates: Array<{ raw: string; fromLink: boolean; fromGrant?: boolean }> = [];
     for (const m of scanBody.matchAll(MARKDOWN_LINK_PATTERN)) candidates.push({ raw: m[1], fromLink: true });
     for (const m of scanBody.matchAll(BARE_BUNDLE_PATTERN)) candidates.push({ raw: m[0], fromLink: false });
-    for (const p of bashGrantPaths(file.data['allowed-tools'])) candidates.push({ raw: p, fromLink: false });
+    for (const p of bashGrantPaths(file.data['allowed-tools'])) candidates.push({ raw: p, fromLink: false, fromGrant: true });
 
+    const suiteRefs = new Set(format === 'suite-monorepo' ? extractSkillLocalRefs(originalBody, true) : []);
     const seen = new Set<string>();
-    for (const { raw, fromLink } of candidates) {
+    for (const { raw, fromLink, fromGrant } of candidates) {
+      // suite-monorepo resolves these .md forms itself, so that scope rules apply to them. This
+      // comes before `seen`, so a body mention it ignores can't hide the same path in a grant.
+      if (
+        format === 'suite-monorepo' && !fromGrant && !raw.includes('${CLAUDE_PROJECT_DIR}') && raw.replace(/#.*$/, '').endsWith('.md') &&
+        (raw.startsWith('${CLAUDE_SKILL_DIR}/') ? suiteRefs.has(raw) : fromLink || /^(?:\.\.?\/|references?\/)/.test(raw))
+      ) continue;
       if (seen.has(raw)) continue;
       seen.add(raw);
       if (isSkippableRef(raw)) continue;
@@ -753,6 +924,21 @@ function detectSkillBundleRefs(
 
       const expanded = expandSkillVars(raw, skillDir, projectRoot);
       const absPath = isAbsolute(expanded) ? expanded : resolve(skillDir, expanded);
+
+      // As for .md references: a local path out of the skill won't resolve once installed.
+      const isLocal = !isAbsolute(expanded) || raw.includes('${CLAUDE_SKILL_DIR}');
+      if (format === 'suite-monorepo' && isLocal && relative(skillDir, absPath).startsWith('..')) {
+        const line = findLine(originalBody, raw);
+        results.push({
+          filePath: file.filePath,
+          rule: 'broken-reference',
+          severity: 'error',
+          message: `Broken reference to "${raw}" — it leaves the skill directory, so it won't resolve once installed`,
+          ...(line !== undefined ? { line } : {}),
+        });
+        continue;
+      }
+
       // Resolved if the target is a known extracted file OR exists on disk.
       if (filePathSet.has(absPath) || existsSync(absPath)) continue;
 
@@ -776,6 +962,8 @@ function detectSkillBundleRefs(
  *
  * For legacy-commands: only command files are referencing entities.
  * For plugin/multi-plugin: both command and skill files are referencing entities.
+ * For suite-monorepo: command, skill and reference files are, and a reference file with no
+ * referrer in its own skill is itself an orphan.
  */
 function detectOrphans(
   files: ExtractResult[],
@@ -789,14 +977,18 @@ function detectOrphans(
   const results: ValidationResult[] = [];
 
   const isPluginFormat = format === 'plugin' || format === 'multi-plugin';
+  const isSuiteMonorepo = format === 'suite-monorepo';
 
   // Collect all canonical names referenced from command (and skill) files.
   const referencedCanonical = new Set<string>();
 
   // Referencing file types: command always, skill for plugin formats.
   const referencingTypes = new Set<string>(['command']);
-  if (isPluginFormat) {
+  if (isPluginFormat || isSuiteMonorepo) {
     referencingTypes.add('skill');
+  }
+  if (isSuiteMonorepo) {
+    referencingTypes.add('reference');
   }
 
   for (const file of files) {
@@ -817,16 +1009,31 @@ function detectOrphans(
         }
       }
     }
+
+    // A reference named only inside a fenced example or a tool grant still has a reader.
+    if (isSuiteMonorepo && file.fileType === 'skill') {
+      const skillDir = dirname(file.filePath);
+      const readers = [...extractSkillLocalRefs(bodyText, true), ...bashGrantPaths(file.data['allowed-tools'])];
+      for (const raw of readers) {
+        const absPath = resolve(skillDir, raw.replace('${CLAUDE_SKILL_DIR}/', ''));
+        const targetFile = pathToFile.get(absPath);
+        if (targetFile && !relative(skillDir, absPath).startsWith('..')) {
+          referencedCanonical.add(canonicalName(targetFile.filePath, targetFile.fileType));
+        }
+      }
+    }
   }
 
   // Check context and agent files by their canonical name.
   for (const file of files) {
     if (file.errors.length > 0) continue;
-    if (file.fileType !== 'context' && file.fileType !== 'agent') continue;
+    const checked = file.fileType === 'context' || file.fileType === 'agent' ||
+      (isSuiteMonorepo && file.fileType === 'reference');
+    if (!checked) continue;
 
     const cn = canonicalName(file.filePath, file.fileType);
     if (!referencedCanonical.has(cn)) {
-      const entityLabel = isPluginFormat ? 'command or skill' : 'command';
+      const entityLabel = isPluginFormat || isSuiteMonorepo ? 'command or skill' : 'command';
       results.push({
         filePath: file.filePath,
         rule: 'orphaned-file',

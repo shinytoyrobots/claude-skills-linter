@@ -202,7 +202,7 @@ Compares each file's `quality_level` against the base branch. If any level decre
 
 ## Repository Formats
 
-claude-skill-lint auto-detects your repository structure. Four formats are supported:
+claude-skill-lint auto-detects your repository structure. Five formats are supported:
 
 | Format | Structure | Detection Signal |
 |--------|-----------|-----------------|
@@ -210,6 +210,8 @@ claude-skill-lint auto-detects your repository structure. Four formats are suppo
 | **project-skills** | `.claude/skills/{name}/SKILL.md` | `.claude/skills/` with `SKILL.md` files |
 | **plugin** | `skills/{name}/SKILL.md` with marketplace manifest, or a single plugin with a root `SKILL.md` | `.claude-plugin/marketplace.json` at root, or `.claude-plugin/plugin.json` plus a root `SKILL.md` / `skills/` |
 | **multi-plugin** | `plugins/{name}/skills/{skill}/SKILL.md` | Plugin subdirectories with `.claude-plugin/plugin.json` |
+
+| **suite-monorepo** | `{suite}/commands/*.md` and `{suite}/skills/{name}/SKILL.md`, side by side | Never detected; set `format: suite-monorepo` |
 
 Detection priority: config override > multi-plugin > plugin > project-skills > legacy-commands. The first match wins.
 
@@ -224,6 +226,16 @@ Hybrid repos work too. A repo with both `.claude/skills/` and legacy `commands/`
 ### Migration Note
 
 For repos transitioning from legacy commands to modern skills, claude-skill-lint validates both locations in a single run. Set the format explicitly in `.skill-lint.yaml` if auto-detection picks the wrong one, or omit it and let detection handle the transition — legacy-commands is the fallback when no modern format signals are found.
+
+### suite-monorepo: Moving a Suite Repo to `SKILL.md`
+
+For a repo of suites moving from `{suite}/commands/{name}.md` to `{suite}/skills/{name}/SKILL.md` one skill at a time, where installed context and agents are also moving from `~/.claude/commands/` to `~/.claude/`. Auto-detection can't identify this mid-migration, so set it explicitly. Add `**/.claude/**` to `ignore` if `.claude/skills/` holds symlinks to the same skills.
+
+- Both layouts lint together, and `~/.claude/commands/context/foo.md`, `~/.claude/context/foo.md` and `~/.claude/skills/{name}/SKILL.md` all resolve.
+- Files in `skills/{name}/references/` belong to that skill. Another skill can't reference them, and same-named files in two skills don't collide. They need no frontmatter, and one with no reader in its skill is reported as orphaned.
+- A `SKILL.md` resolves `references/foo.md`, `${CLAUDE_SKILL_DIR}/references/foo.md`, `./foo.md` and markdown links against its own directory. A path that leaves the directory is broken, because it won't resolve once installed. Commands get none of this, so their relative links behave as they do in `legacy-commands`.
+- `SKILL.md` files count as referrers for orphan detection.
+- Frontmatter `name` must equal the directory at every level (`name-dir-mismatch` is an error here).
 
 ## Custom Structures
 
@@ -245,7 +257,7 @@ Auto-detection works for standard layouts. When it doesn't — or when your repo
 
 ```yaml
 format: plugin          # Force plugin format detection
-# format: legacy-commands | plugin | multi-plugin | project-skills
+# format: legacy-commands | plugin | multi-plugin | project-skills | suite-monorepo
 ```
 
 ### `ignore` Patterns
@@ -323,7 +335,7 @@ levels:
   agents/: 1
 
 # Auto-detected if omitted
-# format: legacy-commands | plugin | multi-plugin | project-skills
+# format: legacy-commands | plugin | multi-plugin | project-skills | suite-monorepo
 
 models: [opus, sonnet, haiku]
 

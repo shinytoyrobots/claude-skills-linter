@@ -14,14 +14,26 @@ const SEGMENT_TYPE_MAP: ReadonlyMap<string, FileType> = new Map([
 ]);
 
 /**
+ * Index of the `references` segment in `skills/{name}/references/`, or -1. A directory named
+ * `references` nested below that one doesn't count, since it isn't the skill's.
+ */
+export function skillReferencesIndex(segments: string[]): number {
+  for (let i = segments.length - 2; i >= 2; i--) {
+    if (segments[i] === 'references' && segments[i - 2] === 'skills') return i;
+  }
+  return -1;
+}
+
+/**
  * Classify a skill file by its path and frontmatter presence.
  *
  * Classification rules (in priority order):
  * 1. Basename `SKILL.md` (case-sensitive) → skill
  * 2. Basename `README.md` or `CLAUDE.md` (case-insensitive) → readme
- * 3. Rightmost known directory segment → command | agent | context | skill
- * 4. Agent path + hasFrontmatter false → legacy-agent
- * 5. No match → unknown
+ * 3. Inside `skills/{name}/references/` → reference
+ * 4. Rightmost known directory segment → command | agent | context | skill
+ * 5. Agent path + hasFrontmatter false → legacy-agent
+ * 6. No match → unknown
  */
 export function classifyFile(
   filePath: string,
@@ -46,6 +58,12 @@ export function classifyFile(
 
   // Split into segments and find the rightmost known directory segment (AC-7).
   const segments = filePath.split('/');
+
+  // Bundled with one skill, so this outranks any directory nested beneath references/.
+  if (skillReferencesIndex(segments) !== -1) {
+    return 'reference';
+  }
+
   let matchedType: FileType | undefined;
 
   for (const segment of segments) {

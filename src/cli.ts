@@ -56,6 +56,11 @@ const cli = yargs(hideBin(process.argv))
           type: 'boolean',
           default: false,
         })
+        .option('fail-on-empty', {
+          describe: 'Exit 1 when no files were checked',
+          type: 'boolean',
+          default: false,
+        })
         .option('run-plugin-validate', {
           describe: 'Also run the official `claude plugin validate` (requires the Claude Code CLI) and merge its findings; plugin repos only',
           type: 'boolean',
@@ -73,6 +78,7 @@ const cli = yargs(hideBin(process.argv))
           ratchet: argv.ratchet,
           portable: argv.portable,
           runPluginValidate: argv.runPluginValidate,
+          failOnEmpty: argv.failOnEmpty,
         });
         process.exit(exitCode);
       } catch (err) {
@@ -104,6 +110,11 @@ const cli = yargs(hideBin(process.argv))
           describe: 'Treat warnings as errors',
           type: 'boolean',
           default: false,
+        })
+        .option('fail-on-empty', {
+          describe: 'Exit 1 when no files were checked',
+          type: 'boolean',
+          default: false,
         }),
     async (argv) => {
       try {
@@ -111,6 +122,7 @@ const cli = yargs(hideBin(process.argv))
           paths: argv.paths as string[] | undefined,
           format: argv.format,
           strict: argv.strict,
+          failOnEmpty: argv.failOnEmpty,
         });
         process.exit(exitCode);
       } catch (err) {
