@@ -313,6 +313,11 @@ describe('graph: references/', () => {
     assert.deepEqual(await graph(root), []);
   });
 
+  it('checks a ${CLAUDE_SKILL_DIR} link the suite patterns cannot parse', async () => {
+    const root = repo({ 's/skills/a/SKILL.md': skill('a', 'See [g](${CLAUDE_SKILL_DIR}/references/café.md).') });
+    assert.equal(withRule(await graph(root), 'broken-reference').length, 1);
+  });
+
   it('does not double-report a broken markdown link', async () => {
     const root = repo({ 's/skills/a/SKILL.md': skill('a', 'See [x](references/gone.md) and [y](${CLAUDE_SKILL_DIR}/references/gone2.md).') });
     assert.equal(withRule(await graph(root), 'broken-reference').length, 2);

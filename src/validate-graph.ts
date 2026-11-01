@@ -901,13 +901,14 @@ function detectSkillBundleRefs(
     for (const m of scanBody.matchAll(BARE_BUNDLE_PATTERN)) candidates.push({ raw: m[0], fromLink: false });
     for (const p of bashGrantPaths(file.data['allowed-tools'])) candidates.push({ raw: p, fromLink: false, fromGrant: true });
 
+    const suiteRefs = new Set(format === 'suite-monorepo' ? extractSkillLocalRefs(originalBody, true) : []);
     const seen = new Set<string>();
     for (const { raw, fromLink, fromGrant } of candidates) {
       // suite-monorepo resolves these .md forms itself, so that scope rules apply to them. This
       // comes before `seen`, so a body mention it ignores can't hide the same path in a grant.
       if (
         format === 'suite-monorepo' && !fromGrant && !raw.includes('${CLAUDE_PROJECT_DIR}') && raw.replace(/#.*$/, '').endsWith('.md') &&
-        (fromLink || /^(?:\$\{CLAUDE_SKILL_DIR\}\/|\.\.?\/|references?\/)/.test(raw))
+        (raw.startsWith('${CLAUDE_SKILL_DIR}/') ? suiteRefs.has(raw) : fromLink || /^(?:\.\.?\/|references?\/)/.test(raw))
       ) continue;
       if (seen.has(raw)) continue;
       seen.add(raw);
