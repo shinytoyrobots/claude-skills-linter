@@ -923,6 +923,21 @@ function detectSkillBundleRefs(
 
       const expanded = expandSkillVars(raw, skillDir, projectRoot);
       const absPath = isAbsolute(expanded) ? expanded : resolve(skillDir, expanded);
+
+      // As for .md references: a local path out of the skill won't resolve once installed.
+      const isLocal = !isAbsolute(expanded) || raw.includes('${CLAUDE_SKILL_DIR}');
+      if (format === 'suite-monorepo' && isLocal && relative(skillDir, absPath).startsWith('..')) {
+        const line = findLine(originalBody, raw);
+        results.push({
+          filePath: file.filePath,
+          rule: 'broken-reference',
+          severity: 'error',
+          message: `Broken reference to "${raw}" — it leaves the skill directory, so it won't resolve once installed`,
+          ...(line !== undefined ? { line } : {}),
+        });
+        continue;
+      }
+
       // Resolved if the target is a known extracted file OR exists on disk.
       if (filePathSet.has(absPath) || existsSync(absPath)) continue;
 
@@ -994,10 +1009,11 @@ function detectOrphans(
       }
     }
 
-    // A reference named only inside a fenced example still has a reader.
+    // A reference named only inside a fenced example or a tool grant still has a reader.
     if (isSuiteMonorepo && file.fileType === 'skill') {
       const skillDir = dirname(file.filePath);
-      for (const raw of extractSkillLocalRefs(bodyText, true)) {
+      const readers = [...extractSkillLocalRefs(bodyText, true), ...bashGrantPaths(file.data['allowed-tools'])];
+      for (const raw of readers) {
         const absPath = resolve(skillDir, raw.replace('${CLAUDE_SKILL_DIR}/', ''));
         const targetFile = pathToFile.get(absPath);
         if (targetFile && !relative(skillDir, absPath).startsWith('..')) {

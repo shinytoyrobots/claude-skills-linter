@@ -283,6 +283,36 @@ describe('graph: references/', () => {
     assert.equal(withRule(await graph(root), 'broken-reference').length, 2);
   });
 
+  it('flags a non-.md link out of the skill directory, even when the target exists', async () => {
+    const root = repo({
+      's/skills/a/SKILL.md': skill('a', 'See [data](../b/data.json).'),
+      's/skills/b/SKILL.md': skill('b'),
+      's/skills/b/data.json': '{}\n',
+    });
+    const broken = withRule(await graph(root), 'broken-reference');
+    assert.equal(broken.length, 1);
+    assert.match(broken[0].message, /leaves the skill directory/);
+  });
+
+  it('flags a grant out of the skill directory, and allows an absolute one', async () => {
+    const root = repo({
+      's/skills/a/SKILL.md': skill('a', 'Body.', 'allowed-tools: Bash(python3 ../b/run.py), Bash(/bin/sh)\n'),
+      's/skills/b/SKILL.md': skill('b'),
+      's/skills/b/run.py': 'pass\n',
+    });
+    const broken = withRule(await graph(root), 'broken-reference');
+    assert.equal(broken.length, 1);
+    assert.match(broken[0].message, /leaves the skill directory/);
+  });
+
+  it('credits a tool grant as a reader of a reference', async () => {
+    const root = repo({
+      's/skills/a/SKILL.md': skill('a', 'Body.', 'allowed-tools: Bash(cat ${CLAUDE_SKILL_DIR}/references/data.md)\n'),
+      's/skills/a/references/data.md': 'Data.\n',
+    });
+    assert.deepEqual(await graph(root), []);
+  });
+
   it('does not double-report a broken markdown link', async () => {
     const root = repo({ 's/skills/a/SKILL.md': skill('a', 'See [x](references/gone.md) and [y](${CLAUDE_SKILL_DIR}/references/gone2.md).') });
     assert.equal(withRule(await graph(root), 'broken-reference').length, 2);
