@@ -265,12 +265,21 @@ describe('graph: references/', () => {
         'Globs: `references/guide.md*`.',
         'Also `~/.claude/context/foo.md.bak`, `~/.claude/skills/a/references/z.md.old`.',
       ].join('\n')),
+      's/skills/a/references/guide.md.template': 'Template.\n',
+      's/skills/a/references/x.md.bak': 'Backup.\n',
     });
     assert.deepEqual(await graph(root), []);
   });
 
   it('still reads a path that ends a sentence', async () => {
     const root = repo({ 's/skills/a/SKILL.md': skill('a', 'See references/gone.md. Then ./gone2.md.') });
+    assert.equal(withRule(await graph(root), 'broken-reference').length, 2);
+  });
+
+  it('checks an uppercase .MD path exactly once', async () => {
+    const root = repo({
+      's/skills/a/SKILL.md': skill('a', 'See ${CLAUDE_SKILL_DIR}/references/GONE.MD and [x](references/GONE2.MD).'),
+    });
     assert.equal(withRule(await graph(root), 'broken-reference').length, 2);
   });
 

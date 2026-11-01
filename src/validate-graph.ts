@@ -379,7 +379,7 @@ function extractSkillLocalRefs(bodyText: string, includeFenced = false): string[
   for (const m of prose.matchAll(SKILL_RELATIVE_PATTERN)) raws.push(m[0]);
   for (const m of prose.matchAll(MARKDOWN_LINK_PATTERN)) {
     const target = m[1].replace(/#.*$/, '');
-    if (!target.toLowerCase().endsWith('.md') || isSkippableRef(target)) continue;
+    if (!target.endsWith('.md') || isSkippableRef(target)) continue;
     // Absolute, installed, and {type}/{name} targets are canonical references, not local ones.
     if (/^(?:\/|~|\$|(?:agents|context|commands)\/)/.test(target)) continue;
     raws.push(target);
@@ -906,7 +906,7 @@ function detectSkillBundleRefs(
       // suite-monorepo resolves these .md forms itself, so that scope rules apply to them. This
       // comes before `seen`, so a body mention it ignores can't hide the same path in a grant.
       if (
-        format === 'suite-monorepo' && !fromGrant && !raw.includes('${CLAUDE_PROJECT_DIR}') && raw.replace(/#.*$/, '').toLowerCase().endsWith('.md') &&
+        format === 'suite-monorepo' && !fromGrant && !raw.includes('${CLAUDE_PROJECT_DIR}') && raw.replace(/#.*$/, '').endsWith('.md') &&
         (fromLink || /^(?:\$\{CLAUDE_SKILL_DIR\}\/|\.\.?\/|references?\/)/.test(raw))
       ) continue;
       if (seen.has(raw)) continue;
